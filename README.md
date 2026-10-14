@@ -24,6 +24,8 @@ persisted to disk with its full reasoning trace.
   Gemma pass, with a per-head annotated gallery.
 - **Robust uploads** — files are verified and normalized to JPEG (AVIF/HEIC handled);
   corrupt uploads get a clear `400`, never a cryptic `500`.
+- **Close-up crops** — top confident boxes are cropped and sent with the full image,
+  so Gemma describes fine detail instead of glossing over small objects.
 - **Full audit trail** — annotated images, JSON reports, agent step log, Gemma
   thought + answer, persistent `history.jsonl`.
 
@@ -39,6 +41,7 @@ FastAPI (backend/app.py)
 Orchestrator (backend/agents.py)
    ├── select  → select_model(): deterministic task choice + rationale
    ├── detect  → DetectorAgent → YoloService (CUDA, one X-head at a time)
+   ├── crops   → top confident boxes → runs/<run_id>/crops/ (close-ups for Gemma)
    ├── reason  → ReasonerAgent → Gemma-4 vision (llama.cpp :8080) [+1 bounded verify-retry]
    └── report  → ReporterAgent → outputs/runs/<run_id>/{input, annotated, report.json}
        (+ global history.jsonl)
@@ -60,8 +63,17 @@ Orchestrator (backend/agents.py)
   GGUF **plus its `--mmproj` file** (vision input requires it).
 - YOLO26X weights in `model/` (`yolo26x.pt`, `yolo26x-seg.pt`, `yolo26x-pose.pt`,
   `yolo26x-obb.pt`, `yolo26x-cls.pt`, `yolo26x-depth.pt`, `yolo26x-sem.pt`).
+  Fetch them with the bundled downloader (all sizes × tasks, skips existing):
+  `python model/load.py`.
 
 ## Quickstart
+
+**0. Clone**
+
+```powershell
+git clone https://github.com/NYN-05/Vision_Explainer.git
+cd Vision_Explainer
+```
 
 **1. Install dependencies**
 
@@ -173,7 +185,8 @@ obj_detection/
 ├── backend/{app,agents,services,utils}.py
 ├── static/index.html
 ├── scripts/bench_yolo.py
-├── model/yolo26x*.pt            # 7 X weights (downloaded separately)
+├── model/load.py                 # weight downloader (all sizes × tasks)
+├── model/yolo26x*.pt            # 7 X weights (via load.py, git-ignored)
 ├── outputs/{uploads,runs,annotated,reports,bench,history.jsonl}
 ├── config.yaml  requirements.txt  CHANGES.md
 ```
