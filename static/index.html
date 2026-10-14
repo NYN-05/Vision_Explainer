@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Vision Explainer</title>
+<style>
+  :root{
+    --bg:#f4f5f7; --surface:#fff; --surface-2:#f1f3f6; --surface-3:#e9edf2;
+    --border:#e1e5eb; --border-strong:#c6cdd7;
+    --text:#14171d; --muted:#5b6472; --faint:#8a93a3;
+    --accent:#2563eb; --accent-ink:#fff; --accent-soft:#e9f0fe;
+    --ok:#15803d; --ok-soft:#e4f4e9;
+    --warn:#b45309; --warn-soft:#fdf0dc;
+    --bad:#b91c1c; --bad-soft:#fbe7e7;
+    --radius:10px; --radius-s:7px;
+    --font:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);
+    margin:0;padding:0 16px 56px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1120px;margin:0 auto}
+  /* top bar */
+  .topbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:18px 2px 0}
+  .brand{display:flex;align-items:center;gap:10px;margin-right:auto}
+  .mark{width:30px;height:30px;border-radius:8px;flex:none;
+    background:linear-gradient(135deg,#2563eb 0 55%,#7c3aed 55% 100%)}
+  .brand h1{font-size:18px;margin:0;letter-spacing:-.01em}
+  .brand p{margin:0;font-size:12px;color:var(--muted)}
+  .pills{display:flex;gap:6px;flex-wrap:wrap}
+  .pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;
+    padding:3px 9px;border-radius:999px;border:1px solid var(--border);
+    background:var(--surface);color:var(--muted);white-space:nowrap}
+  .pill .dot{width:7px;height:7px;border-radius:50%;background:var(--faint);flex:none}
+  .pill.ok{background:var(--ok-soft);border-color:#bfe3c9;color:var(--ok)}
+  .pill.ok .dot{background:var(--ok)}
+  .pill.down{background:var(--bad-soft);border-color:#f0bcbc;color:var(--bad)}
+  .pill.down .dot{background:var(--bad)}
+  .pill.info{background:var(--accent-soft);border-color:#c4d7fb;color:var(--accent)}
+  .pill.info .dot{background:var(--accent)}
+  /* cards */
+  .card{background:var(--surface);border:1px solid var(--border);
+    border-radius:var(--radius);padding:16px;margin:14px 0}
+  .card > h2{margin:0 0 12px;font-size:14px}
+  .card h3.sec{margin:20px 0 8px;font-size:12px;text-transform:uppercase;
+    letter-spacing:.07em;color:var(--muted)}
+  /* form */
+  .form-grid{display:grid;grid-template-columns:250px 1fr;gap:14px}
+  @media (max-width:760px){.form-grid{grid-template-columns:1fr}}
+  label.f{display:block;font-size:13px;margin:0 0 12px}
+  label.f > span{display:block;margin-bottom:6px;font-weight:600;font-size:12.5px}
+  label.f .hint{font-weight:400;color:var(--faint)}
+  input[type=text],input[type=number],select{width:100%;font-size:14px;
+    padding:11px 12px;border:1px solid var(--border-strong);
+    border-radius:var(--radius-s);background:var(--surface);color:var(--text)}
+  input:focus-visible,select:focus-visible,button:focus-visible,a:focus-visible,
+  summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .row2{display:grid;grid-template-columns:1fr 130px;gap:12px}
+  .drop{display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:6px;min-height:196px;border:1.5px dashed var(--border-strong);
+    border-radius:var(--radius-s);color:var(--muted);font-size:13px;
+    cursor:pointer;text-align:center;padding:12px}
+  .drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+  .drop input{display:none}
+  .drop img{max-width:100%;max-height:150px;border-radius:6px}
+  button.primary{width:100%;font-size:15px;font-weight:600;padding:12px;
+    background:var(--accent);color:var(--accent-ink);border:0;
+    border-radius:var(--radius-s);cursor:pointer;margin-top:2px}
+  button.primary:hover{filter:brightness(.94)}
+  button.primary:disabled{opacity:.65;cursor:wait}
+  button.ghost{font-size:12.5px;padding:6px 11px;background:var(--surface-2);
+    border:1px solid var(--border);border-radius:var(--radius-s);cursor:pointer}
+  button.ghost:hover{background:var(--surface-3)}
+  #status{font-size:13px;color:var(--muted);margin-top:10px;min-height:20px}
+  #status.err{color:var(--bad)}
+  .spinner{display:inline-block;width:13px;height:13px;border:2px solid var(--border-strong);
+    border-top-color:var(--accent);border-radius:50%;animation:spin .7s linear infinite;
+    vertical-align:-2px;margin-right:6px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @media (prefers-reduced-motion:reduce){.spinner{animation:none}}
+  /* summary */
+  .summary{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:0 0 4px}
+  @media (max-width:760px){.summary{grid-template-columns:repeat(2,1fr)}}
+  .stat{background:var(--surface-2);border:1px solid var(--border);
+    border-radius:var(--radius-s);padding:8px 12px;font-size:12px;color:var(--muted)}
+  .stat b{display:block;font-size:15px;color:var(--text);white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis}
+  /* compare */
+  .compare{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media (max-width:640px){.compare{grid-template-columns:1fr}}
+  figure{margin:0;background:var(--surface-2);border:1px solid var(--border);
+    border-radius:var(--radius-s);overflow:hidden}
+  figure img{display:block;width:100%;aspect-ratio:4/3;object-fit:contain;background:#101318}
+  figcaption{font-size:12px;color:var(--muted);padding:6px 10px;
+    display:flex;justify-content:space-between;gap:8px}
+  figcaption a{font-size:12px}
+  .imgstate{display:flex;align-items:center;justify-content:center;
+    aspect-ratio:4/3;color:var(--faint);font-size:13px;background:var(--surface-2);
+    padding:12px;text-align:center}
+  #imgErr{font-size:13px;color:var(--bad);background:var(--bad-soft);
+    border-radius:var(--radius-s);padding:8px 12px;margin-top:10px}
+  /* answer */
+  .answer{font-size:14.5px;max-width:78ch}
+  .answer h1,.answer h2,.answer h3{margin:.8em 0 .3em;font-size:1.06em;letter-spacing:-.01em}
+  .answer p{margin:.45em 0}
+  .answer ul,.answer ol{margin:.45em 0;padding-left:22px}
+  .answer li{margin:.2em 0}
+  .answer code{font-family:var(--mono);font-size:.87em;background:var(--surface-2);
+    border:1px solid var(--border);padding:1px 5px;border-radius:4px}
+  .answer pre{background:#101318;color:#e8eaf0;padding:10px 12px;
+    border-radius:var(--radius-s);overflow-x:auto}
+  .answer pre code{background:none;border:0;padding:0;color:inherit}
+  .answer blockquote{margin:.5em 0;padding:4px 12px;
+    border-left:3px solid var(--border-strong);color:var(--muted)}
+  .sec-head{display:flex;align-items:center;gap:8px}
+  .sec-head .sp{flex:1}
+  /* collapsibles */
+  details{border:1px solid var(--border);border-radius:var(--radius-s);
+    padding:9px 12px;background:var(--surface);margin-top:10px}
+  details summary{cursor:pointer;font-size:13.5px;font-weight:600;list-style-position:inside}
+  details pre{font-family:var(--mono);font-size:12px;max-height:300px;overflow:auto;
+    background:var(--surface-2);padding:10px;border-radius:var(--radius-s);
+    max-width:100%;overflow-x:auto}
+  .timeline{font-size:13px}
+  .timeline div{padding:4px 0;border-bottom:1px dashed var(--border)}
+  .timeline div:last-child{border-bottom:0}
+  .thought{font-size:13.5px;color:var(--muted)}
+  .runfiles{font-size:13px}
+  .runfiles a{margin-right:4px}
+  code{font-family:var(--mono);font-size:.87em;background:var(--surface-2);
+    padding:1px 5px;border-radius:4px}
+  a{color:var(--accent)}
+  /* history table */
+  .tbl-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-s)}
+  table{width:100%;border-collapse:collapse;font-size:13px;min-width:640px}
+  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--border);
+    vertical-align:top}
+  th{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;
+    color:var(--muted);background:var(--surface-2);white-space:nowrap}
+  tr:last-child td{border-bottom:0}
+  td.time{white-space:nowrap;color:var(--muted);font-size:12px}
+  td.q{max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tag{display:inline-block;font-size:11.5px;padding:2px 8px;border-radius:999px;
+    background:var(--surface-2);border:1px solid var(--border);white-space:nowrap}
+  .tag.ok{background:var(--ok-soft);border-color:#bfe3c9;color:var(--ok)}
+  .empty{color:var(--faint);font-size:13.5px;padding:10px 2px}
+  .guide{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:4px}
+  @media (max-width:640px){.guide{grid-template-columns:1fr}}
+  .guide div{background:var(--surface-2);border:1px solid var(--border);
+    border-radius:var(--radius-s);padding:10px 12px;font-size:13px;color:var(--muted)}
+  .guide b{display:block;color:var(--text);margin-bottom:2px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="topbar">
+    <div class="brand">
+      <span class="mark" aria-hidden="true"></span>
+      <div><h1>Vision Explainer</h1><p>Local Detect → Reason → Report</p></div>
+    </div>
+    <div class="pills" id="health" role="status" aria-label="System status">
+      <span class="pill"><span class="dot"></span>checking…</span>
+    </div>
+  </header>
+
+  <section class="card" aria-label="Analysis controls">
+    <div class="form-grid">
+      <div>
+        <label class="f"><span>Image</span>
+          <span class="drop" id="drop">Drop image here or click to browse
+            <input type="file" id="img" accept="image/*"/>
+            <img id="orig" alt="Uploaded original preview" hidden/>
+          </span>
+        </label>
+      </div>
+      <div>
+        <label class="f"><span>Question</span>
+          <input type="text" id="q" placeholder="e.g. Describe people and vehicles and their positions"/>
+        </label>
+        <div class="row2">
+          <label class="f"><span>Model</span>
+            <select id="model">
+              <option value="auto">auto (detect-first routing)</option>
+              <option value="all">all 7 YOLO26X (fused, slow)</option>
+              <option value="detect">detect (yolo26x.pt)</option>
+              <option value="seg">seg (yolo26x-seg.pt)</option>
+              <option value="pose">pose (yolo26x-pose.pt)</option>
+              <option value="obb">obb (yolo26x-obb.pt)</option>
+              <option value="cls">cls (yolo26x-cls.pt)</option>
+              <option value="depth">depth (yolo26x-depth.pt)</option>
+              <option value="sem">sem (yolo26x-sem.pt)</option>
+            </select>
+          </label>
+          <label class="f"><span>Confidence <span class="hint">optional</span></span>
+            <input type="number" id="conf" step="0.05" min="0.05" max="0.9" placeholder="0.25"/>
+          </label>
+        </div>
+        <button class="primary" id="go">Analyze</button>
+        <div id="status" role="status" aria-live="polite"></div>
+      </div>
+    </div>
+  </section>
+
+  <main class="card" aria-label="Results">
+    <div id="emptyState">
+      <h2 style="font-size:15px;margin:0 0 6px">No analysis yet</h2>
+      <div class="guide">
+        <div><b>1 · Upload</b>Drop an image or click to browse. AVIF and HEIC are converted automatically.</div>
+        <div><b>2 · Ask</b>Describe what you want in plain language, pick a model or leave it on auto.</div>
+        <div><b>3 · Inspect</b>Read Gemma&rsquo;s explanation, open the gallery, download from the run folder.</div>
+      </div>
+    </div>
+    <div id="resultState" hidden>
+      <div class="summary" id="summary"></div>
+      <h3 class="sec">Final answer</h3>
+      <div class="sec-head">
+        <span style="flex:1"></span>
+        <button class="ghost" id="copyAns" type="button">Copy answer</button>
+      </div>
+      <div id="answer" class="answer"></div>
+      <h3 class="sec">Images</h3>
+      <div class="compare">
+        <figure>
+          <div class="imgstate" id="annState">Waiting for analysis</div>
+          <img id="ann" alt="YOLO-annotated result image" hidden/>
+          <figcaption><span>Annotated (YOLO)</span><a id="annLink" href="#" target="_blank" rel="noopener">open</a></figcaption>
+        </figure>
+        <figure>
+          <div class="imgstate" id="origState">Upload an image to preview</div>
+          <figcaption><span>Original</span></figcaption>
+        </figure>
+      </div>
+      <div id="imgErr" role="alert" hidden></div>
+      <div id="galleryWrap" hidden>
+        <h3 class="sec">All-models gallery</h3>
+        <div id="gallery" class="compare"></div>
+      </div>
+      <details id="stepsWrap" open>
+        <summary>Agent steps</summary>
+        <div id="steps" class="timeline"></div>
+      </details>
+      <details id="thoughtWrap">
+        <summary>Gemma thought process</summary>
+        <div id="thought" class="answer thought"></div>
+      </details>
+      <details id="detsWrap">
+        <summary>Detection JSON</summary>
+        <div><button class="ghost" id="copyBtn" type="button">Copy JSON</button></div>
+        <pre id="dets">—</pre>
+      </details>
+      <h3 class="sec">Run folder</h3>
+      <div id="runfiles" class="runfiles"></div>
+    </div>
+  </main>
+
+  <section class="card" aria-label="History">
+    <h2 style="font-size:14px;margin:0 0 10px">History</h2>
+    <div id="hist"><div class="empty">Loading…</div></div>
+  </section>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let lastDetsText = "";
+let lastAnswerText = "";
+
+/* Safe markdown: escape HTML first, then format a common subset.
+   Raw HTML can never pass through, so no script execution is possible. */
+function md(src) {
+  let t = (src || "").replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const blocks = [];
+  t = t.replace(/```(\w*)\n([\s\S]*?)(```|$)/g, (_, lang, code) => {
+    blocks.push(`<pre><code>${code.replace(/\n$/, "")}</code></pre>`);
+    return `\u0000${blocks.length - 1}\u0000`;
+  });
+  const inline = (s) => s
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*\w])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+  const html = t.split(/\n{2,}/).map((para) => {
+    const lines = para.split("\n");
+    if (/^\u0000\d+\u0000$/.test(para.trim())) return para.trim();
+    if (/^#{1,4}\s/.test(lines[0]))
+      return `<h3>${inline(lines[0].replace(/^#{1,4}\s/, ""))}</h3>` +
+        (lines.slice(1).join(" ") ? `<p>${inline(lines.slice(1).join(" "))}</p>` : "");
+    if (lines.every((l) => /^\s*[-*]\s+/.test(l)))
+      return `<ul>${lines.map((l) => `<li>${inline(l.replace(/^\s*[-*]\s+/, ""))}</li>`).join("")}</ul>`;
+    if (lines.every((l) => /^\s*\d+[.)]\s+/.test(l)))
+      return `<ol>${lines.map((l) => `<li>${inline(l.replace(/^\s*\d+[.)]\s+/, ""))}</li>`).join("")}</ol>`;
+    if (/^&gt;/.test(lines[0]))
+      return `<blockquote>${inline(lines.map((l) => l.replace(/^&gt;\s?/, "")).join(" "))}</blockquote>`;
+    return `<p>${inline(lines.join("<br/>"))}</p>`;
+  }).join("");
+  return html.replace(/\u0000(\d+)\u0000/g, (_, i) => blocks[+i]);
+}
+
+function escapeHtml(s) {
+  return (s || "").replace(/[&<>"]/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+}
+
+function pill(text, cls) {
+  return `<span class="pill ${cls || ""}"><span class="dot"></span>${text}</span>`;
+}
+
+async function health() {
+  try {
+    const r = await fetch("/api/health");
+    const j = await r.json();
+    const g = j.gemma || {};
+    $("health").innerHTML =
+      pill(`YOLO · ${escapeHtml(j.yolo_device || "?")} · ${escapeHtml(j.yolo_loaded_task || "idle")}`, "") +
+      (g.ok ? pill("Gemma · OK", "ok") : pill("Gemma · DOWN", "down")) +
+      (j.vram && j.vram.gpu
+        ? pill(`VRAM · ${j.vram.free_MB}/${j.vram.total_MB} MB`, "info") : "") +
+      pill("X-only · no fallback", "info");
+  } catch (e) {
+    $("health").innerHTML = pill("backend unreachable", "down");
+  }
+}
+
+function fmtTime(iso) {
+  try { return new Date(iso).toLocaleString(); }
+  catch (e) { return iso || ""; }
+}
+
+async function history() {
+  const el = $("hist");
+  try {
+    const r = await fetch("/api/history?limit=10");
+    const j = await r.json();
+    if (!j.history || !j.history.length) {
+      el.innerHTML = `<div class="empty">No runs yet — your analyses will appear here with timestamps and links.</div>`;
+      return;
+    }
+    el.innerHTML = `<div class="tbl-wrap"><table><thead><tr>` +
+      `<th>Time</th><th>Run</th><th>Question</th><th>Task</th><th>Objs</th><th>Status</th><th>Result</th>` +
+      `</tr></thead><tbody>` +
+      j.history.map((h) =>
+        `<tr><td class="time">${escapeHtml(fmtTime(h.created_at))}</td>` +
+        `<td><code>${escapeHtml((h.run_id || h.id || "").slice(-12))}</code></td>` +
+        `<td class="q">${escapeHtml(h.query || "(no query)")}</td>` +
+        `<td><span class="tag">${escapeHtml(h.task || "")}</span></td>` +
+        `<td>${h.num_objects}</td>` +
+        `<td>${h.refined ? `<span class="tag ok">refined</span>` : `<span class="tag">standard</span>`}</td>` +
+        `<td><a href="${h.annotated_url}" target="_blank" rel="noopener">image</a></td></tr>`
+      ).join("") + `</tbody></table></div>`;
+  } catch (e) {
+    el.innerHTML = `<div class="empty">History unavailable: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+/* Upload preview + drag/drop (behavior unchanged: same #img input) */
+const drop = $("drop");
+$("img").addEventListener("change", (e) => {
+  const f = e.target.files[0];
+  if (f) previewFile(f);
+});
+function previewFile(f) {
+  $("orig").src = URL.createObjectURL(f);
+  $("orig").hidden = false;
+  const st = $("origState");
+  if (st) st.remove();
+}
+["dragover", "dragenter"].forEach((ev) => drop.addEventListener(ev, (e) => {
+  e.preventDefault(); drop.classList.add("over");
+}));
+["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => {
+  e.preventDefault(); drop.classList.remove("over");
+}));
+drop.addEventListener("drop", (e) => {
+  const f = e.dataTransfer.files && e.dataTransfer.files[0];
+  if (!f) return;
+  const dt = new DataTransfer();
+  dt.items.add(f);
+  $("img").files = dt.files;
+  previewFile(f);
+});
+drop.addEventListener("click", (e) => {
+  if (e.target.tagName !== "IMG") $("img").click();
+});
+
+/* Broken backend image URLs surface as explicit errors, not silent blanks */
+function watchImg(el, stateEl, label) {
+  el.addEventListener("error", () => {
+    el.hidden = true;
+    if (stateEl) { stateEl.hidden = false; stateEl.textContent = `${label} failed to load`; }
+    const err = $("imgErr");
+    err.hidden = false;
+    err.textContent = `Could not load ${label.toLowerCase()} image — the file may be missing on the server.`;
+  });
+  el.addEventListener("load", () => {
+    if (stateEl) stateEl.hidden = true;
+    el.hidden = false;
+  });
+}
+watchImg($("ann"), $("annState"), "Annotated");
+
+function setLoading(on) {
+  const btn = $("go");
+  btn.disabled = on;
+  btn.innerHTML = on ? `<span class="spinner"></span>Analyzing…` : "Analyze";
+  const st = $("status");
+  st.classList.remove("err");
+  if (on) st.innerHTML = `<span class="spinner"></span>running Detect → Reason → Report…`;
+}
+
+async function copyText(text, btn, doneLabel) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch (e) {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+  }
+  const old = btn.textContent;
+  btn.textContent = doneLabel || "Copied!";
+  setTimeout(() => { btn.textContent = old; }, 1500);
+}
+$("copyBtn").addEventListener("click", () => copyText(lastDetsText, $("copyBtn")));
+$("copyAns").addEventListener("click", () => copyText(lastAnswerText, $("copyAns")));
+
+function shortModel(m) {
+  if (!m) return "—";
+  const base = m.split(/[\\/]/).pop() || m;
+  return base.replace(/\.pt$/i, "");
+}
+
+$("go").onclick = async () => {
+  const f = $("img").files[0];
+  if (!f) { alert("pick an image"); return; }
+  setLoading(true);
+  $("imgErr").hidden = true;
+  const fd = new FormData();
+  fd.append("image", f);
+  fd.append("query", $("q").value);
+  fd.append("model_choice", $("model").value);
+  if ($("conf").value) fd.append("conf", $("conf").value);
+  try {
+    const r = await fetch("/api/analyze", { method: "POST", body: fd });
+    if (!r.ok) {
+      const t = await r.text();
+      throw new Error(t);
+    }
+    const j = await r.json();
+    $("emptyState").hidden = true;
+    $("resultState").hidden = false;
+    const ann = $("ann");
+    ann.hidden = true;
+    $("annState").hidden = false;
+    $("annState").textContent = "Rendering…";
+    ann.src = j.annotated_url;
+    $("annLink").href = j.annotated_url;
+    const gal = j.annotated_gallery || [];
+    $("galleryWrap").hidden = gal.length === 0;
+    $("gallery").innerHTML = gal.map((g) =>
+      `<figure><div class="imgstate">loading…</div>` +
+      `<img src="${g.url}" loading="lazy" alt="YOLO ${escapeHtml(g.task)} result" ` +
+      `onerror="this.hidden=true;this.previousElementSibling.textContent='failed to load';" ` +
+      `onload="this.previousElementSibling.remove();"/>` +
+      `<figcaption><span>${escapeHtml(g.task)}</span>` +
+      `<a href="${g.url}" target="_blank" rel="noopener">open</a></figcaption></figure>`
+    ).join("");
+    $("summary").innerHTML =
+      `<div class="stat">Objects<b>${j.num_objects}</b></div>` +
+      `<div class="stat">Task<b>${escapeHtml(j.task)}</b></div>` +
+      `<div class="stat">Model<b>${escapeHtml(shortModel(j.model))}</b></div>` +
+      `<div class="stat">YOLO<b>${j.yolo_ms != null ? j.yolo_ms + " ms" : "—"}</b></div>` +
+      `<div class="stat">Verify-retry<b>${j.refined ? "yes" : "no"}</b></div>`;
+    $("steps").innerHTML = (j.steps || []).map((s) =>
+      `<div><code>${s.agent}</code> <b>${escapeHtml(s.action)}</b> — ${escapeHtml(s.detail)} (${s.ms}ms)</div>`
+    ).join("");
+    lastAnswerText = j.final_answer || "";
+    $("answer").innerHTML = lastAnswerText ? md(lastAnswerText) : `<div class="empty">No answer returned.</div>`;
+    $("thought").innerHTML = j.thought ? md(j.thought) : `<div class="empty">No thought trace returned.</div>`;
+    const dets = Array.isArray(j.detections) ? j.detections.slice(0, 20) : (j.all_detections || j.detections);
+    lastDetsText = JSON.stringify(dets, null, 1).slice(0, 4000);
+    $("dets").textContent = lastDetsText;
+    $("detsWrap").open = false;
+    $("runfiles").innerHTML =
+      `<div style="margin-bottom:6px">run <code>${escapeHtml(j.run_id || "")}</code></div>` +
+      (j.run_files || []).map((x) => `<a href="${x.url}" target="_blank" rel="noopener">${escapeHtml(x.name)}</a>`).join(" · ");
+    $("status").textContent =
+      `done: ${j.num_objects} objs, task=${j.task}, refined=${j.refined}, report=${j.report_path}`;
+    history();
+  } catch (e) {
+    const st = $("status");
+    st.classList.add("err");
+    st.textContent = "ERROR: " + e.message;
+  } finally {
+    setLoading(false);
+  }
+};
+health();
+history();
+</script>
+</body>
+</html>
