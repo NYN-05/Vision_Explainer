@@ -1,0 +1,56 @@
+# Pinned: X-only, no fallback (user requirement)
+yolo:
+  dir: "model"
+  size: "x"              # enforced, do not change to s/m/l
+  fallback: false
+  device: "cuda"         # cuda if available else cpu, model stays X
+  conf_default: 0.25
+  iou_default: 0.7
+  # task -> weight file (all X)
+  weights:
+    detect: "model/yolo26x.pt"
+    seg: "model/yolo26x-seg.pt"
+    pose: "model/yolo26x-pose.pt"
+    obb: "model/yolo26x-obb.pt"
+    cls: "model/yolo26x-cls.pt"
+    depth: "model/yolo26x-depth.pt"
+    sem: "model/yolo26x-sem.pt"
+
+gemma:
+  base_url: "http://127.0.0.1:8080"
+  chat_endpoint: "/v1/chat/completions"
+  models_endpoint: "/v1/models"
+  timeout_s: 180
+  temperature: 1.0
+  top_p: 0.95
+  top_k: 64
+  max_tokens: 4096
+  image_max_edge: 1536
+  image_detail: "auto"
+
+server:
+  host: "127.0.0.1"
+  port: 8000
+
+paths:
+  uploads: "outputs/uploads"
+  annotated: "outputs/annotated"
+  reports: "outputs/reports"
+  runs: "outputs/runs"
+  history: "outputs/history.jsonl"
+
+agent:
+  max_refine_passes: 1
+  low_conf_threshold: 0.35
+  retry_conf: 0.15
+  verify_budget: 1        # hard bound on extra YOLO passes per request
+  crop_top_k: 5           # close-up crops per request (0 disables)
+  crop_min_conf: 0.35     # only boxes at/above this confidence get cropped
+
+selection:
+  vram_safety_MB: 800     # added to per-head reserve in check_fit
+  # NOTE: no aerial-domain checkpoint ships; aerial queries use obb as fallback (see rationale)
+
+benchmarks:
+  data_root: ""           # e.g. "bench/coco8" (ultralytics dataset yaml or dir); empty = disabled
+  splits: ["val"]
