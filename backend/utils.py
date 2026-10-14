@@ -1,6 +1,8 @@
 """Shared utils: Gemma prompt builders + disk persistence."""
 from __future__ import annotations
 import json
+import os
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -129,12 +131,55 @@ def ensure_dirs(*dirs: str | Path) -> None:
         Path(d).mkdir(parents=True, exist_ok=True)
 
 
+def atomic_write_text(path: str | Path, text: str) -> Path:
+    """Write text atomically (tmp file + os.replace) so concurrent readers
+    never see a half-written report. Creates parent dirs as needed."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=path.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    return path
+
+
+def _locked_append_line(path: Path, line: str) -> None:
+    """Append one line with an OS file lock (msvcrt on Windows, fcntl on
+    POSIX) so concurrent requests cannot interleave history.jsonl rows."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        try:
+            if os.name == "nt":
+                import msvcrt
+                msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, len(line.encode("utf-8")))
+                try:
+                    f.write(line)
+                finally:
+                    f.flush()
+                    msvcrt.locking(f.fileno(), msvcrt.LK_UNLCK, len(line.encode("utf-8")))
+            else:
+                import fcntl
+                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                try:
+                    f.write(line)
+                finally:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+        except (ImportError, OSError, ValueError):
+            # Locking unavailable (odd FS) — plain append, never fail the request.
+            f.write(line)
+
+
 def save_report(report: dict, reports_dir: str | Path) -> Path:
     ensure_dirs(reports_dir)
     rid = report.get("id", datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S"))
-    path = Path(reports_dir) / f"{rid}.json"
-    path.write_text(json.dumps(report, indent=2), encoding="utf-8")
-    return path
+    return atomic_write_text(Path(reports_dir) / f"{rid}.json", json.dumps(report, indent=2))
 
 
 def append_history(report: dict, history_path: str | Path) -> None:
@@ -143,8 +188,7 @@ def append_history(report: dict, history_path: str | Path) -> None:
     slim = {k: report.get(k) for k in (
         "id", "run_id", "created_at", "query", "task", "model", "num_objects",
         "refined", "annotated_url", "report_path", "final_answer")}
-    with p.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(slim) + "\n")
+    _locked_append_line(p, json.dumps(slim) + "\n")
 
 
 def read_history(history_path: str | Path, limit: int = 20) -> list[dict]:

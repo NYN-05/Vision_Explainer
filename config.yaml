@@ -29,8 +29,11 @@ gemma:
   image_detail: "auto"
 
 server:
-  host: "127.0.0.1"
+  host: "127.0.0.1"   # loopback only: /outputs serves uploaded images; do not expose publicly
   port: 8000
+  max_upload_MB: 25
+  max_image_MP: 50
+  max_query_chars: 2000
 
 paths:
   uploads: "outputs/uploads"

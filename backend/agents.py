@@ -8,9 +8,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from backend.services import MODEL_REGISTRY, hw_info, select_model
-from backend.utils import (SYSTEM_PROMPT, SYSTEM_PROMPT_ALL, build_fused_summary,
-                           build_user_text, build_yolo_summary, crop_detections,
-                           save_report, append_history)
+from backend.utils import (SYSTEM_PROMPT, SYSTEM_PROMPT_ALL, atomic_write_text,
+                           build_fused_summary, build_user_text, build_yolo_summary,
+                           crop_detections, save_report, append_history)
 
 
 # ---- detector (Agent 1: thin wrapper over YoloService) ----
@@ -171,8 +171,7 @@ class ReporterAgent:
         if run_dir is not None:
             run_dir = Path(run_dir)
             run_dir.mkdir(parents=True, exist_ok=True)
-            path = run_dir / "report.json"
-            path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+            path = atomic_write_text(run_dir / "report.json", json.dumps(report, indent=2))
         else:
             path = save_report(report, self.reports_dir)
         report["report_path"] = str(path)
