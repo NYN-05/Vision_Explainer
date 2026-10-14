@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.agents import Orchestrator
+from backend.lab_run import LabRunner
 from backend.services import GemmaClient, YoloService
 from backend.utils import ensure_dirs, read_history
 
@@ -24,7 +25,8 @@ ANNOTATED = ROOT / CFG["paths"]["annotated"]
 REPORTS = ROOT / CFG["paths"]["reports"]
 RUNS = ROOT / CFG["paths"]["runs"]
 HISTORY = ROOT / CFG["paths"]["history"]
-ensure_dirs(UPLOADS, ANNOTATED, REPORTS, RUNS)
+LAB = ROOT / CFG["paths"].get("lab", "outputs/lab")
+ensure_dirs(UPLOADS, ANNOTATED, REPORTS, RUNS, LAB)
 
 SERVER_CFG = CFG.get("server", {})
 MAX_UPLOAD_MB = float(SERVER_CFG.get("max_upload_MB", 25))
@@ -60,9 +62,53 @@ orch = Orchestrator(yolo, gemma, reports_dir=REPORTS, history_path=HISTORY,
                     crop_top_k=CFG["agent"].get("crop_top_k", 5),
                     crop_min_conf=CFG["agent"].get("crop_min_conf", 0.35))
 
-app = FastAPI(title="Vision Explainer")
+app = FastAPI(title="Vision Reliability Lab")
 app.mount("/outputs", StaticFiles(directory=ROOT / "outputs"), name="outputs")
 app.mount("/static", StaticFiles(directory=ROOT / "static"), name="static")
+
+lab = LabRunner(yolo, gemma, LAB)
+
+
+@app.get("/lab")
+def lab_page():
+    html = ROOT / "static" / "lab.html"
+    if not html.exists():
+        return JSONResponse({"ok": False, "error": "static/lab.html missing"})
+    return FileResponse(str(html))
+
+
+@app.get("/api/perturbations")
+def perturbations():
+    from backend.perturb import list_ops
+    return {"perturbations": list_ops()}
+
+
+@app.post("/api/experiments")
+async def create_experiment(request: Request):
+    try:
+        cfg = await request.json()
+    except Exception:
+        raise HTTPException(400, "Body must be a JSON experiment config.")
+    res = lab.start(cfg if isinstance(cfg, dict) else {})
+    if res["status"] == "validation_failed":
+        raise HTTPException(400, "; ".join(res["errors"]) or "Invalid experiment config.")
+    return res
+
+
+@app.get("/api/experiments")
+def list_experiments():
+    return {"experiments": lab.list()}
+
+
+@app.get("/api/experiments/{exp_id}")
+def get_experiment(exp_id: str):
+    if ".." in exp_id or "/" in exp_id or "\\" in exp_id:
+        raise HTTPException(400, "Invalid experiment id.")
+    st = lab.status(exp_id)
+    if st is None:
+        raise HTTPException(404, "Experiment not found.")
+    rep = lab.report(exp_id) if st.get("status") == "done" else None
+    return {"status": st, "report": rep}
 
 
 @app.get("/")

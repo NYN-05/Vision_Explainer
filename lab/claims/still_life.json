@@ -1,0 +1,19 @@
+{
+  "description": "Hand-reviewed claims for lab/fixtures/still_life.jpg (synthetic: red square left, blue circle right, white background). expected = supported|refuted|insufficient.",
+  "claims": [
+    {"id": "c1", "type": "presence", "text": "There is a red square in the image.",
+     "keywords": ["red square", "red", "square"], "expected": "supported"},
+    {"id": "c2", "type": "presence", "text": "There is a blue circle in the image.",
+     "keywords": ["blue circle", "blue", "circle"], "expected": "supported"},
+    {"id": "c3", "type": "presence", "text": "There is a cat in the image.",
+     "keywords": ["cat"], "expected": "refuted"},
+    {"id": "c4", "type": "spatial", "text": "The square is to the left of the circle.",
+     "keywords": ["left of", "left"], "expected": "supported"},
+    {"id": "c5", "type": "action", "text": "The square is driving the circle.",
+     "keywords": ["driving"], "expected": "refuted"},
+    {"id": "c6", "type": "attribute", "text": "The circle is green.",
+     "keywords": ["green"], "expected": "refuted"},
+    {"id": "c7", "type": "scene", "text": "The photo was taken outdoors at night.",
+     "keywords": ["outdoors", "night", "outside"], "expected": "insufficient"}
+  ]
+}

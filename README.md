@@ -1,6 +1,7 @@
-# Vision Explainer
+# Vision Reliability Lab
 
-Local image understanding: YOLO26X detection + Gemma-4 vision reasoning.
+Local image understanding + robustness evaluation: YOLO26X detection + Gemma-4 vision reasoning,
+with systematic perturbation testing, ground-truth metrics, and explanation grounding checks.
 
 ![Python 3.11](https://img.shields.io/badge/python-3.11-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-✓-green)
@@ -119,6 +120,11 @@ Gemma reasoning, and final answer.
 | `GET /api/history?limit=20`         | Recent analyses (newest first)                                                                                                                                                |
 | `POST /api/analyze`                 | Multipart: `image` (file), `query` (text), `model_choice` (`auto`\|`all`\|`detect`\|`seg`\|`pose`\|`obb`\|`cls`\|`depth`\|`sem`), `conf`?, `iou`? |
 | `GET /outputs/runs/<run_id>/<file>` | Per-run files: input, annotated images, `report.json`                                                                                                                       |
+| `GET /lab`                            | Reliability Lab UI (configure/run/view experiments)                                                                                                                         |
+| `GET /api/perturbations`              | 8 perturbation ops with kinds + severities                                                                                                                                  |
+| `POST /api/experiments`               | Start experiment (JSON config: dataset, perturbations, thresholds, explain?)                                                                                                |
+| `GET /api/experiments`                | List experiments with status                                                                                                                                                |
+| `GET /api/experiments/<id>`           | Status + full report when done                                                                                                                                              |
 
 **Run folders:** every request creates `outputs/runs/<run_id>/` holding its input image,
 annotated image(s), and `report.json`; the report's `run_files` lists each file's URL.
@@ -164,6 +170,24 @@ python scripts/bench_yolo.py --task detect --data bench/dota.yaml
 python scripts/eval_grounding.py                              # citation hygiene over stored runs
 # → outputs/bench/grounding.json: coverage, unknown-citation rate, abstention rate
 ```
+
+## Reliability Lab
+
+No dataset needed for v1 — experiments run on built-in synthetic fixtures
+(`lab/claims/`, generated still-life) with pretrained X-only checkpoints:
+
+```powershell
+# UI: open http://127.0.0.1:8000/lab, pick perturbations, run, watch stages
+# API:
+#   POST /api/experiments {"dataset": {"demo": true}, "perturbations": [{"op": "gaussian_blur", "severities": [1,2,3], "seed": 7}]}
+# → outputs/lab/<exp_id>/report.json: baseline/perturbed mAP, degradation,
+#   stability (repeatability, NOT accuracy), failure artifacts, explanation rates
+python scripts/test_lab.py   # 20 unit checks: determinism, synthetic metrics, edge cases
+```
+
+Bring a COCO-format dataset (`{"gt": "...json", "images": "dir"}`, COCO 80-class ids
+for the detect head) for real accuracy numbers. Synthetic shapes are
+out-of-distribution by design — expect low accuracy, meaningful stability splits.
 
 ## Troubleshooting
 

@@ -1,5 +1,6 @@
 """YOLO26X service. Strict X-only, no fallback. Detect-first routing."""
 from __future__ import annotations
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -7,6 +8,12 @@ from pathlib import Path
 import cv2
 import torch
 from ultralytics import YOLO
+
+# Serializes GPU-critical sections. YoloService mutates _model/_loaded_task and
+# measures free VRAM, so concurrent predicts (serving + lab, or parallel lab
+# conditions) would corrupt each other. One lock, always held for a full
+# predict/predict_all — the single-GPU box is effectively serial anyway.
+_GPU_LOCK = threading.RLock()
 
 VALID_TASKS = ("detect", "seg", "pose", "obb", "cls", "depth", "sem")
 
@@ -222,6 +229,15 @@ class YoloService:
                 conf: float | None = None, iou: float | None = None,
                 vram_safety_MB: int | None = None,
                 ann_name: str | None = None) -> dict:
+        with _GPU_LOCK:
+            return self._predict_locked(image_path, task, annotated_dir, conf=conf,
+                                        iou=iou, vram_safety_MB=vram_safety_MB,
+                                        ann_name=ann_name)
+
+    def _predict_locked(self, image_path: str | Path, task: str, annotated_dir: str | Path,
+                        conf: float | None = None, iou: float | None = None,
+                        vram_safety_MB: int | None = None,
+                        ann_name: str | None = None) -> dict:
         image_path = Path(image_path)
         if not image_path.exists():
             raise FileNotFoundError(f"Image not found: {image_path}")
@@ -296,11 +312,12 @@ class YoloService:
     def predict_all(self, image_path: str | Path, annotated_dir: str | Path,
                       conf: float | None = None, iou: float | None = None) -> dict[str, dict]:
         """Run every X head sequentially (VRAM-safe: one model at a time). No fallback."""
-        fused: dict[str, dict] = {}
-        for task in VALID_TASKS:
-            fused[task] = self.predict(image_path, task, annotated_dir, conf=conf, iou=iou,
-                                       ann_name=f"annotated_{task}.jpg")
-        return fused
+        with _GPU_LOCK:
+            fused: dict[str, dict] = {}
+            for task in VALID_TASKS:
+                fused[task] = self._predict_locked(image_path, task, annotated_dir, conf=conf,
+                                                   iou=iou, ann_name=f"annotated_{task}.jpg")
+            return fused
 
     @staticmethod
     def _parse(r, task: str) -> list[dict]:

@@ -3,6 +3,40 @@
 Changelog for `obj_detection` (YOLO26X + Gemma-4 agent). Newest first.
 (Times are local, from file modification times.)
 
+## 2026-10-15 — Vision Reliability Lab (robustness platform, v1 detection-only)
+
+- Product renamed to Vision Reliability Lab (titles, README, API title, UI nav);
+  `/api/analyze` contract, report schema, and serving behavior unchanged.
+- New `docs/implementation_audit.md`: verified architecture, reuse inventory, risks,
+  acceptance criteria (written before code, per plan).
+- New `backend/perturb.py`: 8 seeded ops (blur, brightness, contrast, noise, JPEG,
+  resize, occlusion, crop); photometric vs geometric; box remap or explicit invalid
+  marking; sha256 + params recorded; failures recorded, never skipped.
+- New `backend/lab_metrics.py`: dependency-free COCO-style eval (greedy matching,
+  101-pt AP, mAP/mAP50/per-class/FP/FN); empty-preds-with-GT scores 0.0 (fixed
+  during verification — was None); degradation deltas.
+- New `backend/lab_compare.py`: IoU-based baseline↔perturbed matching (never
+  positional); disappearances, misclassifications, drift, conf drops, new FPs;
+  stability reported separately from accuracy.
+- New `backend/lab_explain.py` + `lab/claims/still_life.json`: structural citation
+  checks plus hand-reviewed factual verdicts (Supported/Refuted/Insufficient);
+  keyword stance heuristic with documented limits; judge output labeled automated.
+- New `backend/lab_fixtures.py`: synthetic still-life demo (OOD by design — low
+  accuracy expected, stability splits meaningful); real eval needs COCO-format data.
+- `services.py`: `threading.RLock` serializes all GPU predicts (fixes audit D13
+  for serving + lab).
+- New `backend/lab_run.py`: 10-stage background orchestrator (validate → report),
+  stage manifest, detection-only mode without Gemma, opt-in explanation eval,
+  failure artifacts, `outputs/lab/<exp_id>/report.json`.
+- API: `GET /lab`, `GET /api/perturbations`, `POST /api/experiments`,
+  `GET /api/experiments`, `GET /api/experiments/<id>`; new `static/lab.html`
+  (configure/run/poll/results/report viewer, `node --check` clean).
+- New `scripts/test_lab.py`: 20 stdlib tests green (determinism, synthetic metrics,
+  duplicates/order-independence, stability-vs-accuracy, stance matrix).
+- Verified live: detection-only demo experiment → done (honest null/low metrics);
+  explain-enabled run → done with claim outcomes; `/api/analyze` regression run
+  (9 objs, grounding 1.0) still green.
+
 ## 2026-10-14 — Architecture audit fixes, phases 0–3 (0,1,2,4,3)
 
 - Phase 0: verified 14 code-backed defects (D1–D14: unbounded conf/iou, 500s leaking

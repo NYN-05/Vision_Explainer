@@ -1,6 +1,6 @@
-# AGENTS.md — Vision Explainer
+# AGENTS.md — Vision Reliability Lab
 
-Local Detect → Reason → Report: YOLO26X (CUDA) + Gemma-4 via llama.cpp. No cloud, no tests/lint/CI in repo.
+Local Detect → Reason → Report + robustness lab: YOLO26X (CUDA) + Gemma-4 via llama.cpp. No cloud, no pytest/lint/CI in repo.
 
 ## Run it (order matters)
 - Install: `pip install -r requirements.txt` (Python 3.11, NVIDIA CUDA expected; falls back to CPU)
@@ -15,7 +15,13 @@ Local Detect → Reason → Report: YOLO26X (CUDA) + Gemma-4 via llama.cpp. No c
 - `backend/services.py` — `YoloService` (registry, VRAM gate, inference) + `GemmaClient`. Source of truth for routing/selection.
 - `backend/utils.py` — Gemma prompts, `crop_detections`, report/history persistence.
 - `static/index.html` — entire UI, zero deps. `scripts/bench_yolo.py`, `model/load.py` standalone.
-- `config.yaml` is runtime truth (weights, Gemma params, `agent.crop_top_k/crop_min_conf`, `selection.vram_safety_MB`, `paths.runs`).
+- Lab (new, additive — `/api/analyze` contract untouched): `backend/perturb.py` (8 seeded
+  perturbation ops), `backend/lab_metrics.py` (COCO-style eval, no new deps),
+  `backend/lab_compare.py` (IoU matching, stability≠accuracy), `backend/lab_explain.py`
+  + `lab/claims/` (structural + hand-reviewed factual), `backend/lab_fixtures.py`
+  (synthetic demo), `backend/lab_run.py` (background orchestrator → `outputs/lab/<id>/`),
+  `static/lab.html` (`/lab`), `scripts/test_lab.py` (stdlib unittest), `scripts/eval_grounding.py`.
+- `config.yaml` is runtime truth (weights, Gemma params, `agent.crop_top_k/crop_min_conf`, `selection.vram_safety_MB`, `paths.runs`, `paths.lab`).
 
 ## Hard constraints (from user, do not relax)
 - **X-only, no fallback:** never load/suggest/download `n/s/m/l` weights. Missing weight → `FileNotFoundError`; low VRAM → `RuntimeError`/502 with message, never silent downgrade.
@@ -31,6 +37,7 @@ Local Detect → Reason → Report: YOLO26X (CUDA) + Gemma-4 via llama.cpp. No c
 - Frontend: keep the 16 legacy element IDs (`img,q,model,conf,go,status,ann,summary,steps,thought,dets,runfiles,hist,health,gallery,answer`). Markdown renderer is escape-first — never inject raw HTML.
 
 ## Verify without test suite
-- No pytest/lint config. Use: `python -c "from fastapi.testclient import TestClient; from backend.app import app; ..."` for `/api/health`, `/api/models`, `auto→detect`, `all`-mode, selection (`satellite→obb`).
+- Lab unit checks: `python scripts/test_lab.py` (20 tests, no GPU/Gemma/dataset needed).
+- Serving: `python -c "from fastapi.testclient import TestClient; from backend.app import app; ..."` for `/api/health`, `/api/models`, `auto→detect`, `all`-mode, selection (`satellite→obb`).
 - Frontend: `node --check` on extracted `<script>`; check contrast/focus/keyboard if touching CSS.
 - After backend changes, confirm `GET /` 200 and one live `/api/analyze` run creates 3 files (single) or 9 files (`all`) with valid history row.

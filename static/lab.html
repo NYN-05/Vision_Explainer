@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Vision Reliability Lab — Experiments</title>
+<style>
+  :root{
+    --bg:#f4f5f7; --surface:#fff; --surface-2:#f1f3f6;
+    --border:#e1e5eb; --border-strong:#c6cdd7;
+    --text:#14171d; --muted:#5b6472;
+    --accent:#2563eb; --accent-ink:#fff; --accent-soft:#e9f0fe;
+    --ok:#15803d; --ok-soft:#e4f4e9; --bad:#b91c1c; --bad-soft:#fbe7e7;
+    --radius:10px; --radius-s:7px;
+    --font:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);margin:0;padding:0 16px 56px;line-height:1.5}
+  .wrap{max-width:1120px;margin:0 auto}
+  .topbar{display:flex;align-items:center;gap:12px;padding:18px 2px 0}
+  .brand{display:flex;align-items:center;gap:10px;margin-right:auto}
+  .mark{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,#2563eb 0 55%,#7c3aed 55% 100%)}
+  .brand h1{font-size:18px;margin:0}
+  .brand p{margin:0;font-size:12px;color:var(--muted)}
+  nav a{font-size:13px;margin-left:12px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin:14px 0}
+  .card > h2{margin:0 0 12px;font-size:14px}
+  label.f{display:block;font-size:13px;margin:0 0 10px}
+  label.f > span{display:block;margin-bottom:5px;font-weight:600;font-size:12.5px}
+  input[type=text],input[type=number],select{width:100%;font-size:14px;padding:10px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-s)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media (max-width:760px){.grid2{grid-template-columns:1fr}}
+  .ops{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:8px 0}
+  @media (max-width:760px){.ops{grid-template-columns:repeat(2,1fr)}}
+  .op{border:1px solid var(--border);border-radius:var(--radius-s);padding:8px 10px;font-size:13px;background:var(--surface-2)}
+  .op small{color:var(--muted)}
+  button.primary{font-size:15px;font-weight:600;padding:12px 24px;background:var(--accent);color:var(--accent-ink);border:0;border-radius:var(--radius-s);cursor:pointer}
+  button.primary:disabled{opacity:.65;cursor:wait}
+  #status{font-size:13px;color:var(--muted);margin-top:10px}
+  #status.err{color:var(--bad)}
+  .pill{display:inline-block;font-size:12px;padding:2px 10px;border-radius:999px;border:1px solid var(--border);margin:2px 4px 2px 0;background:var(--surface-2)}
+  .pill.ok{background:var(--ok-soft);color:var(--ok);border-color:#bfe3c9}
+  .pill.bad{background:var(--bad-soft);color:var(--bad);border-color:#f0bcbc}
+  .tbl-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:var(--radius-s);margin-top:10px}
+  table{width:100%;border-collapse:collapse;font-size:13px;min-width:680px}
+  th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--border)}
+  th{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);background:var(--surface-2)}
+  code{font-family:var(--mono);font-size:.87em;background:var(--surface-2);padding:1px 5px;border-radius:4px}
+  .empty{color:var(--muted);font-size:13.5px}
+  a{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="topbar">
+    <div class="brand"><span class="mark"></span><div><h1>Vision Reliability Lab</h1><p>Robustness · Accuracy · Grounding</p></div></div>
+    <nav><a href="/">Analyze</a><a href="/lab">Experiments</a></nav>
+  </header>
+
+  <section class="card" aria-label="New experiment">
+    <h2>New experiment (detection v1, synthetic demo dataset)</h2>
+    <div class="grid2">
+      <label class="f"><span>Name</span><input type="text" id="ename" value="demo-robustness"/></label>
+      <label class="f"><span>Confidence</span><input type="number" id="econf" step="0.05" min="0.05" max="0.95" value="0.25"/></label>
+    </div>
+    <div class="grid2">
+      <label class="f"><span>Seed</span><input type="number" id="eseed" step="1" value="7"/></label>
+      <label class="f"><span>Severities</span><select id="esev"><option value="1,2,3">1, 2, 3</option><option value="2">2 only</option><option value="1">1 only</option></select></label>
+    </div>
+    <span style="font-size:13px;font-weight:600">Perturbations</span>
+    <div class="ops" id="ops"></div>
+    <label class="f"><span><input type="checkbox" id="eexplain" style="width:auto"/> Evaluate explanations with Gemma (optional, needs llama.cpp server)</span></label>
+    <button class="primary" id="go">Run experiment</button>
+    <div id="status" role="status" aria-live="polite"></div>
+  </section>
+
+  <main class="card" aria-label="Results">
+    <h2>Results</h2>
+    <div id="stages"></div>
+    <div id="metrics"></div>
+    <div id="failures"></div>
+    <div id="explain"></div>
+    <div id="reportlink"></div>
+  </main>
+
+  <section class="card" aria-label="Past experiments">
+    <h2>Past experiments</h2>
+    <div id="hist"><div class="empty">Loading…</div></div>
+  </section>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => (s || "").replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]);
+let timer = null;
+
+async function loadOps() {
+  try {
+    const j = await (await fetch("/api/perturbations")).json();
+    $("ops").innerHTML = j.perturbations.map((o) =>
+      `<label class="op"><input type="checkbox" data-op="${o.name}" checked/> ${esc(o.name)}<br/><small>${esc(o.kind)}</small></label>`
+    ).join("");
+  } catch (e) { $("ops").innerHTML = `<div class="empty">ops unavailable</div>`; }
+}
+
+async function history() {
+  try {
+    const j = await (await fetch("/api/experiments")).json();
+    if (!j.experiments.length) { $("hist").innerHTML = `<div class="empty">No experiments yet.</div>`; return; }
+    $("hist").innerHTML = j.experiments.map((e) =>
+      `<div><code>${esc(e.exp_id)}</code> <span class="pill ${e.status === "done" ? "ok" : (e.status === "failed" ? "bad" : "")}">${esc(e.status)}</span> ` +
+      `<a href="#" data-exp="${esc(e.exp_id)}">view</a></div>`).join("");
+    $("hist").querySelectorAll("a[data-exp]").forEach((a) =>
+      a.addEventListener("click", (ev) => { ev.preventDefault(); watch(a.dataset.exp); }));
+  } catch (e) { $("hist").innerHTML = `<div class="empty">History unavailable.</div>`; }
+}
+
+$("go").onclick = async () => {
+  const ops = [...document.querySelectorAll("#ops input[data-op]:checked")].map((c) => ({
+    op: c.dataset.op, severities: $("esev").value.split(",").map(Number), seed: +$("eseed").value }));
+  if (!ops.length) { $("status").textContent = "Select at least one perturbation."; return; }
+  $("go").disabled = true;
+  $("status").classList.remove("err");
+  $("status").textContent = "Starting…";
+  try {
+    const r = await fetch("/api/experiments", { method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ name: $("ename").value, task: "detect", conf: +$("econf").value,
+        dataset: { demo: true }, perturbations: ops, explain: $("eexplain").checked,
+        claims: "lab/claims/still_life.json" }) });
+    if (!r.ok) throw new Error(await r.text());
+    const j = await r.json();
+    $("status").textContent = "Running " + j.exp_id + " …";
+    watch(j.exp_id);
+  } catch (e) { $("status").classList.add("err"); $("status").textContent = "ERROR: " + e.message; }
+  finally { $("go").disabled = false; }
+};
+
+async function watch(id) {
+  if (timer) clearInterval(timer);
+  const poll = async () => {
+    const r = await fetch("/api/experiments/" + id);
+    const j = await r.json();
+    render(j);
+    if (j.status.status === "done" || j.status.status === "failed") { clearInterval(timer); history(); }
+  };
+  await poll();
+  timer = setInterval(poll, 2000);
+}
+
+function render(j) {
+  const st = j.status;
+  $("status").textContent = `${st.exp_id}: ${st.status} @ ${st.stage}`;
+  $("stages").innerHTML = Object.keys(st.stages || {}).map((s) => `<span class="pill ok">${esc(s)}</span>`).join("");
+  if (!j.report) { $("metrics").innerHTML = `<div class="empty">Running…</div>`; return; }
+  const rep = j.report;
+  const b = rep.baseline_metrics || {};
+  const rows = (rep.conditions || []).map((c) =>
+    `<tr><td><code>${esc(c.op)} s${c.severity}</code></td><td>${c.metrics.mAP ?? "—"}</td>` +
+    `<td>${c.degradation.mAP_delta ?? "—"}</td><td>${c.mean_stability ?? "—"}</td>` +
+    `<td>${c.invalid_total}</td></tr>`).join("");
+  $("metrics").innerHTML =
+    `<h3 style="font-size:13px">Baseline: mAP ${b.mAP ?? "—"} · mAP50 ${b.mAP50 ?? "—"} · P ${b.precision ?? "—"} · R ${b.recall ?? "—"} (tp ${b.tp} fp ${b.fp} fn ${b.fn})</h3>` +
+    `<div class="tbl-wrap"><table><thead><tr><th>Condition</th><th>mAP</th><th>ΔmAP</th><th>Stability</th><th>Invalid</th></tr></thead><tbody>${rows}</tbody></table></div>` +
+    `<p style="font-size:12.5px;color:var(--muted)">Stability = output repeatability, not correctness. Δ vs baseline.</p>`;
+  $("failures").innerHTML = rep.failures && rep.failures.length
+    ? `<h3 style="font-size:13px">Top failures</h3>` + rep.failures.map((f) =>
+      `<div>img ${esc(f.image_id)} <code>${esc(f.op)} s${f.severity}</code> score ${f.score} ` +
+      (f.artifact ? `<a href="${f.artifact}" target="_blank" rel="noopener">artifact</a>` : "") + `</div>`).join("")
+    : `<div class="empty">No failure cases.</div>`;
+  const ex = rep.explanation || {};
+  $("explain").innerHTML = !ex.enabled ? `<div class="empty">Explanation eval disabled.</div>`
+    : (ex.skipped ? `<div class="empty">Explanation eval skipped: ${esc(ex.skipped)}</div>`
+    : (ex.results || []).map((x) =>
+      `<div>${esc(x.image)}: unsupported ${x.unsupported_claim_rate} · supported ${x.supported_correct_rate} · omission ${x.omission_rate} · abstention ${x.correct_abstention_rate}</div>`).join(""));
+  $("reportlink").innerHTML = `<a href="/outputs/lab/${st.exp_id}/report.json" target="_blank" rel="noopener">Full report JSON</a>`;
+}
+
+loadOps();
+history();
+</script>
+</body>
+</html>

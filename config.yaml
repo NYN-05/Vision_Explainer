@@ -41,6 +41,7 @@ paths:
   reports: "outputs/reports"
   runs: "outputs/runs"
   history: "outputs/history.jsonl"
+  lab: "outputs/lab"
 
 agent:
   max_refine_passes: 1
