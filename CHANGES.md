@@ -3,6 +3,14 @@
 Changelog for `obj_detection` (YOLO26X + Gemma-4 agent). Newest first.
 (Times are local, from file modification times.)
 
+## 2026-10-14 22:33 — Audit fixes: keyboard, contrast, gallery, polish
+
+- `static/index.html` only: keyboard-focusable file input (overlay + `:focus-within`
+  ring), `--faint` → `#5f6875` (5.64:1 on white, 5.07:1 on panels), gallery rebuilt
+  with `addEventListener` (no inline handlers), dead `.sp` rule now used, 44px ghost
+  buttons, `alert()` → `#status.err` (aria-live announced), escaped history tooltips.
+- Verified: `node --check`, md vectors, live run 200 (9 objs, history linked).
+
 ## 2026-10-14 22:17 — SaaS workspace redesign (single file)
 
 - `static/index.html` rebuilt Linear/Vercel-style: top bar with brand + status pills,

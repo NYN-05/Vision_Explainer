@@ -8,7 +8,7 @@
   :root{
     --bg:#f4f5f7; --surface:#fff; --surface-2:#f1f3f6; --surface-3:#e9edf2;
     --border:#e1e5eb; --border-strong:#c6cdd7;
-    --text:#14171d; --muted:#5b6472; --faint:#8a93a3;
+    --text:#14171d; --muted:#5b6472; --faint:#5f6875;
     --accent:#2563eb; --accent-ink:#fff; --accent-soft:#e9f0fe;
     --ok:#15803d; --ok-soft:#e4f4e9;
     --warn:#b45309; --warn-soft:#fdf0dc;
@@ -60,16 +60,19 @@
   .drop{display:flex;flex-direction:column;align-items:center;justify-content:center;
     gap:6px;min-height:196px;border:1.5px dashed var(--border-strong);
     border-radius:var(--radius-s);color:var(--muted);font-size:13px;
-    cursor:pointer;text-align:center;padding:12px}
+    cursor:pointer;text-align:center;padding:12px;position:relative}
   .drop:hover,.drop.over{border-color:var(--accent);background:var(--accent-soft)}
-  .drop input{display:none}
+  .drop:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+  /* keyboard-focusable file input: covers the dropzone, invisible but tabbable */
+  .drop input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
   .drop img{max-width:100%;max-height:150px;border-radius:6px}
   button.primary{width:100%;font-size:15px;font-weight:600;padding:12px;
     background:var(--accent);color:var(--accent-ink);border:0;
     border-radius:var(--radius-s);cursor:pointer;margin-top:2px}
   button.primary:hover{filter:brightness(.94)}
   button.primary:disabled{opacity:.65;cursor:wait}
-  button.ghost{font-size:12.5px;padding:6px 11px;background:var(--surface-2);
+  button.ghost{font-size:12.5px;padding:10px 16px;min-height:44px;
+    display:inline-flex;align-items:center;background:var(--surface-2);
     border:1px solid var(--border);border-radius:var(--radius-s);cursor:pointer}
   button.ghost:hover{background:var(--surface-3)}
   #status{font-size:13px;color:var(--muted);margin-top:10px;min-height:20px}
@@ -215,7 +218,7 @@
       <div class="summary" id="summary"></div>
       <h3 class="sec">Final answer</h3>
       <div class="sec-head">
-        <span style="flex:1"></span>
+        <span class="sp"></span>
         <button class="ghost" id="copyAns" type="button">Copy answer</button>
       </div>
       <div id="answer" class="answer"></div>
@@ -341,7 +344,7 @@ async function history() {
       j.history.map((h) =>
         `<tr><td class="time">${escapeHtml(fmtTime(h.created_at))}</td>` +
         `<td><code>${escapeHtml((h.run_id || h.id || "").slice(-12))}</code></td>` +
-        `<td class="q">${escapeHtml(h.query || "(no query)")}</td>` +
+        `<td class="q" title="${escapeHtml(h.query || "(no query)")}">${escapeHtml(h.query || "(no query)")}</td>` +
         `<td><span class="tag">${escapeHtml(h.task || "")}</span></td>` +
         `<td>${h.num_objects}</td>` +
         `<td>${h.refined ? `<span class="tag ok">refined</span>` : `<span class="tag">standard</span>`}</td>` +
@@ -379,7 +382,8 @@ drop.addEventListener("drop", (e) => {
   previewFile(f);
 });
 drop.addEventListener("click", (e) => {
-  if (e.target.tagName !== "IMG") $("img").click();
+  // Native clicks on the overlay input already open the dialog; only forward others.
+  if (e.target.tagName !== "IMG" && e.target.tagName !== "INPUT") $("img").click();
 });
 
 /* Broken backend image URLs surface as explicit errors, not silent blanks */
@@ -433,7 +437,12 @@ function shortModel(m) {
 
 $("go").onclick = async () => {
   const f = $("img").files[0];
-  if (!f) { alert("pick an image"); return; }
+  if (!f) {
+    const st = $("status");
+    st.classList.add("err");
+    st.textContent = "Pick an image first — drop a file or click the upload box.";
+    return;
+  }
   setLoading(true);
   $("imgErr").hidden = true;
   const fd = new FormData();
@@ -458,14 +467,33 @@ $("go").onclick = async () => {
     $("annLink").href = j.annotated_url;
     const gal = j.annotated_gallery || [];
     $("galleryWrap").hidden = gal.length === 0;
-    $("gallery").innerHTML = gal.map((g) =>
-      `<figure><div class="imgstate">loading…</div>` +
-      `<img src="${g.url}" loading="lazy" alt="YOLO ${escapeHtml(g.task)} result" ` +
-      `onerror="this.hidden=true;this.previousElementSibling.textContent='failed to load';" ` +
-      `onload="this.previousElementSibling.remove();"/>` +
-      `<figcaption><span>${escapeHtml(g.task)}</span>` +
-      `<a href="${g.url}" target="_blank" rel="noopener">open</a></figcaption></figure>`
-    ).join("");
+    $("gallery").replaceChildren();
+    gal.forEach((g) => {
+      const fig = document.createElement("figure");
+      const state = document.createElement("div");
+      state.className = "imgstate";
+      state.textContent = "loading…";
+      const im = document.createElement("img");
+      im.loading = "lazy";
+      im.alt = `YOLO ${g.task} result`;
+      im.addEventListener("error", () => {
+        im.hidden = true;
+        state.textContent = "failed to load";
+      });
+      im.addEventListener("load", () => state.remove());
+      const cap = document.createElement("figcaption");
+      const name = document.createElement("span");
+      name.textContent = g.task;
+      const open = document.createElement("a");
+      open.href = g.url;
+      open.target = "_blank";
+      open.rel = "noopener";
+      open.textContent = "open";
+      cap.append(name, open);
+      fig.append(state, im, cap);
+      $("gallery").append(fig);
+      im.src = g.url;
+    });
     $("summary").innerHTML =
       `<div class="stat">Objects<b>${j.num_objects}</b></div>` +
       `<div class="stat">Task<b>${escapeHtml(j.task)}</b></div>` +
