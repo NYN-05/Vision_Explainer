@@ -1,0 +1,18 @@
+# editor / OS
+.vscode/
+__pycache__/
+*.pyc
+.DS_Store
+
+# model weights + partial downloads (GBs, re-download via model/load.py)
+*.pt
+*.part
+*.gguf
+
+# generated outputs (per-run folders, uploads, reports, history, benchmarks)
+outputs/
+
+# local test images (user data, not part of the app)
+test_*.jpg
+test_*.avif
+test*.jpg
