@@ -3,8 +3,8 @@
 Run from anywhere (weights always land in this file's folder):
     python model/load.py
 """
-from pathlib import Path
 import shutil
+from pathlib import Path
 
 from ultralytics import YOLO
 
@@ -29,6 +29,7 @@ TARGET = Path(__file__).resolve().parent  # .../obj_detection/model
 
 
 def download(name: str) -> str:
+    """Fetch one checkpoint into TARGET, skipping it when already present."""
     dest = TARGET / name
     if dest.exists() and dest.stat().st_size > 0:
         return f"Skipped (exists): {name}"
@@ -40,15 +41,17 @@ def download(name: str) -> str:
 
 
 def main() -> None:
+    """Download every configured checkpoint sequentially, then summarize."""
     names = [f"{PREFIX}{s}{t}.pt" for s in SIZES for t in TASKS]
-    print(f"Downloading {len(names)} checkpoints sequentially (sizes={SIZES}, tasks={len(TASKS)}) ...")
+    print(f"Downloading {len(names)} checkpoints sequentially "
+          f"(sizes={SIZES}, tasks={len(TASKS)}) ...")
     ok, failed = 0, []
     for i, n in enumerate(names, 1):
         print(f"[{i}/{len(names)}] {n} ...")
         try:
             print(download(n))
             ok += 1
-        except Exception as err:
+        except (OSError, RuntimeError) as err:
             print(f"Failed {n}: {err}")
             failed.append(n)
     print(f"Done: {ok}/{len(names)} downloaded" + (f", failed: {failed}" if failed else ""))
