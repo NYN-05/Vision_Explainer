@@ -31,30 +31,20 @@ persisted to disk with its full reasoning trace.
 
 ## Architecture
 
-```text
-Browser (static/index.html)
-   │  POST /api/analyze {image, query, model_choice, conf?, iou?}
-   ▼
-FastAPI (backend/app.py)
-   │  1. Verify + normalize upload to JPEG
-   ▼
-Orchestrator (backend/agents.py)
-   ├── select  → select_model(): deterministic task choice + rationale
-   ├── detect  → DetectorAgent → YoloService (CUDA, one X-head at a time)
-   ├── crops   → top confident boxes → runs/<run_id>/crops/ (close-ups for Gemma)
-   ├── reason  → ReasonerAgent → Gemma-4 vision (llama.cpp :8080) [+1 bounded verify-retry]
-   └── report  → ReporterAgent → outputs/runs/<run_id>/{input, annotated, report.json}
-       (+ global history.jsonl)
-```
+<p align="center">
+  <a href="https://gitdiagram.com/nyn-05/vision_explainer?utm_source=readme&utm_medium=picture">
+    <img src="https://gitdiagram.com/nyn-05/vision_explainer/diagram.png" alt="Architecture diagram of Vision Explainer" width="85%" />
+  </a>
+</p>
 
-| Module | Responsibility |
-|---|---|
-| `backend/app.py` | FastAPI routes, upload handling, static + `/outputs` serving |
-| `backend/agents.py` | Detector, Reasoner, Reporter, Orchestrator |
-| `backend/services.py` | `YoloService` (registry, selection, VRAM gate, inference) + `GemmaClient` |
-| `backend/utils.py` | Gemma prompt builders, report/history persistence |
-| `static/index.html` | Upload UI, agent-step viewer, gallery, history |
-| `scripts/bench_yolo.py` | Per-head benchmark runner (precision/recall/mAP/latency/VRAM) |
+| Module                    | Responsibility                                                                |
+| ------------------------- | ----------------------------------------------------------------------------- |
+| `backend/app.py`        | FastAPI routes, upload handling, static + `/outputs` serving                |
+| `backend/agents.py`     | Detector, Reasoner, Reporter, Orchestrator                                    |
+| `backend/services.py`   | `YoloService` (registry, selection, VRAM gate, inference) + `GemmaClient` |
+| `backend/utils.py`      | Gemma prompt builders, report/history persistence                             |
+| `static/index.html`     | Upload UI, agent-step viewer, gallery, history                                |
+| `scripts/bench_yolo.py` | Per-head benchmark runner (precision/recall/mAP/latency/VRAM)                 |
 
 ## Prerequisites
 
@@ -110,25 +100,25 @@ Gemma reasoning, and final answer.
 
 ## Configuration (`config.yaml`)
 
-| Section | Key options |
-|---|---|
-| `yolo` | `weights` (7 X checkpoints), `device`, `conf_default` (0.25), `iou_default` (0.7) |
-| `gemma` | `base_url`, endpoints, `temperature` 1.0, `top_p` 0.95, `top_k` 64, `max_tokens` 4096, `image_max_edge` 1536 |
-| `selection` | `vram_safety_MB` (VRAM pre-check margin), aerial/dense routing cues documented in code |
-| `agent` | `verify_budget` (max extra YOLO passes: 1), `retry_conf` (0.15), `crop_top_k` (close-ups per request, 0 disables), `crop_min_conf` (0.35) |
-| `benchmarks` | `data_root` (labeled dataset path; empty = disabled) |
-| `paths` | `uploads`, `annotated` (legacy), `reports` (legacy), `runs`, `history` under `outputs/` |
+| Section        | Key options                                                                                                                                       |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `yolo`       | `weights` (7 X checkpoints), `device`, `conf_default` (0.25), `iou_default` (0.7)                                                         |
+| `gemma`      | `base_url`, endpoints, `temperature` 1.0, `top_p` 0.95, `top_k` 64, `max_tokens` 4096, `image_max_edge` 1536                          |
+| `selection`  | `vram_safety_MB` (VRAM pre-check margin), aerial/dense routing cues documented in code                                                          |
+| `agent`      | `verify_budget` (max extra YOLO passes: 1), `retry_conf` (0.15), `crop_top_k` (close-ups per request, 0 disables), `crop_min_conf` (0.35) |
+| `benchmarks` | `data_root` (labeled dataset path; empty = disabled)                                                                                            |
+| `paths`      | `uploads`, `annotated` (legacy), `reports` (legacy), `runs`, `history` under `outputs/`                                               |
 
 ## API reference
 
-| Endpoint | Description |
-|---|---|
-| `GET /` | Web UI |
-| `GET /api/health` | YOLO device, Gemma reachability, VRAM, loaded head |
-| `GET /api/models` | 7 heads: weight path, existence, domain, output format, `validation` status |
-| `GET /api/history?limit=20` | Recent analyses (newest first) |
-| `POST /api/analyze` | Multipart: `image` (file), `query` (text), `model_choice` (`auto`\|`all`\|`detect`\|`seg`\|`pose`\|`obb`\|`cls`\|`depth`\|`sem`), `conf`?, `iou`? |
-| `GET /outputs/runs/<run_id>/<file>` | Per-run files: input, annotated images, `report.json` |
+| Endpoint                              | Description                                                                                                                                                                   |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /`                             | Web UI                                                                                                                                                                        |
+| `GET /api/health`                   | YOLO device, Gemma reachability, VRAM, loaded head                                                                                                                            |
+| `GET /api/models`                   | 7 heads: weight path, existence, domain, output format, `validation` status                                                                                                 |
+| `GET /api/history?limit=20`         | Recent analyses (newest first)                                                                                                                                                |
+| `POST /api/analyze`                 | Multipart: `image` (file), `query` (text), `model_choice` (`auto`\|`all`\|`detect`\|`seg`\|`pose`\|`obb`\|`cls`\|`depth`\|`sem`), `conf`?, `iou`? |
+| `GET /outputs/runs/<run_id>/<file>` | Per-run files: input, annotated images, `report.json`                                                                                                                       |
 
 **Run folders:** every request creates `outputs/runs/<run_id>/` holding its input image,
 annotated image(s), and `report.json`; the report's `run_files` lists each file's URL.
@@ -148,15 +138,15 @@ inference failure (e.g. VRAM exhaustion — X-only policy refuses silent downgra
 Verified at startup by `validate_registry()` (actual checkpoint task + class count —
 compatibility is never inferred from filenames):
 
-| Head | Weight | Domain | Classes | Output |
-|---|---|---|---|---|
-| detect | `yolo26x.pt` | general (COCO) | 80 | boxes + labels |
-| seg | `yolo26x-seg.pt` | general (COCO) | 80 | masks + boxes |
-| pose | `yolo26x-pose.pt` | COCO-person | 1 | boxes + 17 keypoints |
-| obb | `yolo26x-obb.pt` | aerial-oriented | 15 (plane, ship, …) | rotated boxes |
-| cls | `yolo26x-cls.pt` | general (ImageNet) | 1000 | top-5 labels |
-| depth | `yolo26x-depth.pt` | general | 1 | depth map |
-| sem | `yolo26x-sem.pt` | street-scene | 19 (road, sidewalk, …) | semantic map |
+| Head   | Weight               | Domain             | Classes                 | Output               |
+| ------ | -------------------- | ------------------ | ----------------------- | -------------------- |
+| detect | `yolo26x.pt`       | general (COCO)     | 80                      | boxes + labels       |
+| seg    | `yolo26x-seg.pt`   | general (COCO)     | 80                      | masks + boxes        |
+| pose   | `yolo26x-pose.pt`  | COCO-person        | 1                       | boxes + 17 keypoints |
+| obb    | `yolo26x-obb.pt`   | aerial-oriented    | 15 (plane, ship, …)    | rotated boxes        |
+| cls    | `yolo26x-cls.pt`   | general (ImageNet) | 1000                    | top-5 labels         |
+| depth  | `yolo26x-depth.pt` | general            | 1                       | depth map            |
+| sem    | `yolo26x-sem.pt`   | street-scene       | 19 (road, sidewalk, …) | semantic map         |
 
 ## Benchmarks
 
@@ -170,13 +160,13 @@ python scripts/bench_yolo.py --task detect --data bench/dota.yaml
 
 ## Troubleshooting
 
-| Symptom | Cause / fix |
-|---|---|
-| `400 Unreadable image file` | Corrupt upload, or a format PIL can't decode. Note: AVIF files misnamed `.jpg` are auto-converted and work. |
-| `502 … Insufficient VRAM` | ~6 GB GPUs fit one X-head + Gemma. Free VRAM (close GPU apps / reduce llama-server offload) and retry. The app never silently downgrades to S/M models. |
-| `502 … llama.cpp chat failed` | llama.cpp server down or started without `--mmproj`. Check `:8080/v1/models` and restart with `--mmproj`. |
-| Empty detections, valid result | Empty is a legitimate outcome. A verify-retry runs at most once, only when low confidence coincides with Gemma uncertainty. |
-| `depth`/`sem` look odd | Those heads' output parsing is code-complete but empirically unvalidated — flagged in `CHANGES.md`. |
+| Symptom                          | Cause / fix                                                                                                                                             |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `400 Unreadable image file`    | Corrupt upload, or a format PIL can't decode. Note: AVIF files misnamed `.jpg` are auto-converted and work.                                           |
+| `502 … Insufficient VRAM`     | ~6 GB GPUs fit one X-head + Gemma. Free VRAM (close GPU apps / reduce llama-server offload) and retry. The app never silently downgrades to S/M models. |
+| `502 … llama.cpp chat failed` | llama.cpp server down or started without `--mmproj`. Check `:8080/v1/models` and restart with `--mmproj`.                                         |
+| Empty detections, valid result   | Empty is a legitimate outcome. A verify-retry runs at most once, only when low confidence coincides with Gemma uncertainty.                             |
+| `depth`/`sem` look odd       | Those heads' output parsing is code-complete but empirically unvalidated — flagged in `CHANGES.md`.                                                  |
 
 ## Project structure
 
