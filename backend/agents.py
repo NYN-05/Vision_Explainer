@@ -9,9 +9,9 @@ from pathlib import Path
 
 from backend.services import MODEL_REGISTRY, hw_info, select_model
 from backend.utils import (SYSTEM_PROMPT, SYSTEM_PROMPT_ALL, atomic_write_text,
-                           build_evidence, build_fused_summary, build_user_text,
-                           build_yolo_summary, crop_detections, save_report,
-                           append_history, validate_answer)
+                           build_evidence, build_fused_summary, build_provenance,
+                           build_user_text, build_yolo_summary, crop_detections,
+                           save_report, append_history, validate_answer)
 
 
 # ---- detector (Agent 1: thin wrapper over YoloService) ----
@@ -133,7 +133,8 @@ class ReporterAgent:
             evidence: list | None = None,
             grounding: dict | None = None,
             crop_provenance: list | None = None,
-            retry_reason: str = "") -> dict:
+            retry_reason: str = "",
+            provenance: dict | None = None) -> dict:
         rid = run_id or datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_") + uuid.uuid4().hex[:6]
         dets = detection.get("detections", [])
         if task == "all" and all_detections is not None:
@@ -183,6 +184,8 @@ class ReporterAgent:
             report["crop_provenance"] = crop_provenance
         if retry_reason:
             report["retry_reason"] = retry_reason
+        if provenance is not None:
+            report["provenance"] = provenance
         if run_dir is not None:
             run_dir = Path(run_dir)
             run_dir.mkdir(parents=True, exist_ok=True)
@@ -322,6 +325,9 @@ class Orchestrator:
         grounding = validate_answer(reason.get("answer", ""), [e["id"] for e in evidence])
         crop_provenance = [{k: c[k] for k in ("n", "det_no", "label", "conf", "box", "pad", "image_size")
                             if k in c} for c in crops]
+        provenance = build_provenance(image_path, [task],
+                                      self.detector.yolo.weights,
+                                      detection.get("device", ""))
 
         annotated_name = Path(detection["annotated_path"]).name
         annotated_url = self._run_file_url(run_id, annotated_name)
@@ -347,7 +353,7 @@ class Orchestrator:
                                    run_id=run_id, run_dir=run_dir, run_files=run_files,
                                    evidence=evidence, grounding=grounding,
                                    crop_provenance=crop_provenance,
-                                   retry_reason=retry_reason)
+                                   retry_reason=retry_reason, provenance=provenance)
         return report
 
     def _run_all(self, image_path: Path, query: str, model_choice: str,
@@ -369,6 +375,9 @@ class Orchestrator:
         grounding = validate_answer(reason.get("answer", ""), [e["id"] for e in evidence])
         crop_provenance = [{k: c[k] for k in ("n", "det_no", "label", "conf", "box", "pad", "image_size")
                             if k in c} for c in crops]
+        provenance = build_provenance(image_path, list(fused.keys()),
+                                      self.detector.yolo.weights,
+                                      fused.get("detect", {}).get("device", ""))
 
         per_task: dict[str, dict] = {}
         gallery: list[str] = []
@@ -398,5 +407,6 @@ class Orchestrator:
             validation_status={t: MODEL_REGISTRY[t]["validation"] for t in fused},
             fallback_actions=fallback_actions or [], hardware=hw or {},
             run_id=run_id, run_dir=run_dir, run_files=run_files,
-            evidence=evidence, grounding=grounding, crop_provenance=crop_provenance)
+            evidence=evidence, grounding=grounding, crop_provenance=crop_provenance,
+            provenance=provenance)
         return report

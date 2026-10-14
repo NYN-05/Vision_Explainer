@@ -206,6 +206,50 @@ def crop_detections(image_path: str | Path, detections: list[dict], out_dir: str
         return []
 
 
+def build_provenance(image_path: str | Path, tasks: list[str],
+                     weights: dict[str, str], device: str) -> dict:
+    """Record reproducibility facts for a run. Cheap by design: image sha256,
+    image size, library versions, and weight file size/mtime (full weight
+    hashes would re-read GBs on every request). Never raises."""
+    import hashlib
+    prov: dict = {"device": device}
+    try:
+        h = hashlib.sha256()
+        with open(image_path, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        prov["image_sha256"] = h.hexdigest()
+    except Exception:
+        prov["image_sha256"] = None
+    try:
+        from PIL import Image
+        with Image.open(image_path) as im:
+            prov["image_size"] = [im.width, im.height]
+    except Exception:
+        prov["image_size"] = None
+    try:
+        import torch
+        prov["torch"] = torch.__version__
+        prov["cuda_available"] = torch.cuda.is_available()
+    except Exception:
+        prov["torch"] = None
+    try:
+        import ultralytics
+        prov["ultralytics"] = ultralytics.__version__
+    except Exception:
+        prov["ultralytics"] = None
+    winfo = {}
+    for t in tasks:
+        try:
+            p = Path(weights[t])
+            st = p.stat()
+            winfo[t] = {"bytes": st.st_size, "mtime": st.st_mtime}
+        except (KeyError, OSError):
+            winfo[t] = None
+    prov["weights"] = winfo
+    return prov
+
+
 # ---- store (disk persistence: reports + history.jsonl) ----
 def ensure_dirs(*dirs: str | Path) -> None:
     for d in dirs:
