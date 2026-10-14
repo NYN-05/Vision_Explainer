@@ -3,6 +3,33 @@
 Changelog for `obj_detection` (YOLO26X + Gemma-4 agent). Newest first.
 (Times are local, from file modification times.)
 
+## 2026-10-14 — Architecture audit fixes, phases 0–3 (0,1,2,4,3)
+
+- Phase 0: verified 14 code-backed defects (D1–D14: unbounded conf/iou, 500s leaking
+  internals, unlocked history, non-atomic reports, no upload caps, Gemma-worded retry
+  gating, no citation requirement/output validation, comparable fused confidences,
+  unvalidated depth/sem, no crop/provenance records, shared-service mutation,
+  unclamped history limit).
+- Phase 1 (hardening): `model_choice`/`conf`/`iou`/`query` validated (400s);
+  upload caps (`max_upload_MB` 25, `max_image_MP` 50, content-length pre-check);
+  500s sanitized with server-side logged eid; atomic report writes; locked
+  `history.jsonl` appends (msvcrt/fcntl); history limit clamped 1–100.
+- Phase 2 (evidence boundary): `build_evidence()` assigns citable `[#dN]` ids;
+  prompts mandate per-claim citations + UNCERTAIN/abstain; `validate_answer()`
+  records `grounding` (cited/unknown/coverage/abstained); crops carry box/pad
+  provenance; retry also triggers measurement-driven (avg_conf < retry_conf).
+- Phase 4 (provenance + eval): per-run `provenance` (image sha256/size, torch/
+  ultralytics versions, weight sizes/mtimes); new `scripts/eval_grounding.py`
+  → `outputs/bench/grounding.json` (coverage, unknown-citation/abstention rates).
+- Phase 3 (fusion honesty): `cross_check_fused()` (detect-persons-vs-pose,
+  detect-vs-seg; cls/depth/sem marked na with reasons); fused prompts/summaries
+  state confidences are not cross-head comparable; `predict()` tags depth/sem
+  with `output_note: unvalidated head`.
+- All new report keys additive (`evidence`, `grounding`, `crop_provenance`,
+  `provenance`, `retry_reason`, `cross_checks`, `output_note`).
+- Verified: py_compile, pure-function unit checks, TestClient (health/models/400s),
+  eval_grounding on 4 legacy reports. Live YOLO+Gemma run not re-verified here.
+
 ## 2026-10-14 22:33 — Audit fixes: keyboard, contrast, gallery, polish
 
 - `static/index.html` only: keyboard-focusable file input (overlay + `:focus-within`

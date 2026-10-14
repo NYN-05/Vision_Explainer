@@ -70,7 +70,43 @@ def build_fused_summary(fused: dict[str, dict]) -> str:
         if det is None:
             continue
         parts.append(build_yolo_summary(det.get("detections", []), det.get("model", task), task))
+    parts.append("NOTE: confidences are per-head and NOT comparable across heads "
+                 "(a COCO box score and an ImageNet class score mean different things). "
+                 "Report disagreements between heads explicitly; never rank heads by raw confidence.")
     return "\n\n".join(parts)
+
+
+def cross_check_fused(fused: dict[str, dict]) -> list[dict]:
+    """Deterministic cross-head consistency checks (no LLM, no calibration claims).
+
+    Only compares genuinely comparable evidence: person counts (detect vs pose)
+    and box counts (detect vs seg). Other head pairs have different output
+    semantics/vocabularies, so they are reported as `na` rather than forced.
+    Never raises.
+    """
+    out = []
+    try:
+        det = (fused.get("detect") or {}).get("detections", []) or []
+        seg = (fused.get("seg") or {}).get("detections", []) or []
+        pose = (fused.get("pose") or {}).get("detections", []) or []
+        det_persons = sum(1 for d in det if isinstance(d, dict) and d.get("label") == "person")
+        out.append({"check": "detect-persons-vs-pose-persons",
+                    "result": "agree" if det_persons == len(pose) else "disagree",
+                    "detail": f"detect persons={det_persons}, pose detections={len(pose)}"})
+        out.append({"check": "detect-boxes-vs-seg-boxes",
+                    "result": "agree" if len(det) == len(seg) else "disagree",
+                    "detail": f"detect boxes={len(det)}, seg boxes={len(seg)}"})
+        out.append({"check": "cls-vs-detect-label",
+                    "result": "na",
+                    "detail": "ImageNet top-5 labels and COCO box labels use different "
+                              "vocabularies; not directly comparable"})
+        out.append({"check": "depth-sem-maps",
+                    "result": "na",
+                    "detail": "depth/sem output parsing is unvalidated; maps are not "
+                              "object counts and are excluded from agreement checks"})
+    except Exception:
+        pass
+    return out
 
 
 def build_evidence(detections: list[dict], task: str) -> list[dict]:

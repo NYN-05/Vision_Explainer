@@ -272,6 +272,11 @@ class YoloService:
 
         detections = self._parse(r, task)
         annotated_path = self._save_plot(r, annotated_dir, ann_name)
+        # Honesty marker: depth/sem output parsing runs but has never been
+        # verified against model specs or fixed test images (see CHANGES.md).
+        # Downstream consumers must not treat these as validated results.
+        output_note = ("unvalidated head: parsing not empirically verified"
+                       if task in ("depth", "sem") else "")
         return {
             "task": task,
             "model": str(self.weight_for(task)),
@@ -285,6 +290,7 @@ class YoloService:
             "names": getattr(r, "names", {}),
             "vram_fit_note": fit_note,
             "validation": MODEL_REGISTRY[task]["validation"],
+            "output_note": output_note,
         }
 
     def predict_all(self, image_path: str | Path, annotated_dir: str | Path,

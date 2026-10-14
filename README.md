@@ -128,10 +128,15 @@ Legacy `outputs/annotated/` + `outputs/reports/` files from older runs stay read
 `task`, `requested_model`, `model`, `device`, `conf`, `num_objects`, `detections`
 (+ `all_detections`, `annotated_gallery`, `per_task` in `all`-mode), `thought`,
 `final_answer`, `selection_rationale`, `validation_status`, `fallback_actions`,
-`hardware`, `steps`, `refined`. New keys are additive — old clients keep working.
+`hardware`, `steps`, `refined`, plus evidence keys: `evidence` (citable `[#dN]` records),
+`grounding` (cited/unknown ids, coverage, abstention), `crop_provenance` (crop boxes in
+original-image coords), `provenance` (image hash, library versions, weight sizes/mtimes),
+`retry_reason`, and `cross_checks` (`all`-mode head-agreement checks). New keys are
+additive — old clients keep working.
 
-**Status codes:** `400` unreadable upload · `500` internal error · `502` YOLO/Gemma
-inference failure (e.g. VRAM exhaustion — X-only policy refuses silent downgrade).
+**Status codes:** `400` unreadable/oversize upload, unknown `model_choice`, or `conf`/`iou`
+out of range · `500` internal error (generic message, details logged server-side) ·
+`502` YOLO/Gemma inference failure (e.g. VRAM exhaustion — X-only policy refuses silent downgrade).
 
 ## Model registry
 
@@ -156,6 +161,8 @@ No claim of "best model" without evidence. Supply a labeled dataset, then:
 python scripts/bench_yolo.py --data bench/coco8.yaml          # all heads
 python scripts/bench_yolo.py --task detect --data bench/dota.yaml
 # → outputs/bench/<task>.json: precision, recall, mAP50, mAP50-95, latency, peak VRAM
+python scripts/eval_grounding.py                              # citation hygiene over stored runs
+# → outputs/bench/grounding.json: coverage, unknown-citation rate, abstention rate
 ```
 
 ## Troubleshooting

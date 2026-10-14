@@ -11,7 +11,8 @@ from backend.services import MODEL_REGISTRY, hw_info, select_model
 from backend.utils import (SYSTEM_PROMPT, SYSTEM_PROMPT_ALL, atomic_write_text,
                            build_evidence, build_fused_summary, build_provenance,
                            build_user_text, build_yolo_summary, crop_detections,
-                           save_report, append_history, validate_answer)
+                           cross_check_fused, save_report, append_history,
+                           validate_answer)
 
 
 # ---- detector (Agent 1: thin wrapper over YoloService) ----
@@ -134,7 +135,8 @@ class ReporterAgent:
             grounding: dict | None = None,
             crop_provenance: list | None = None,
             retry_reason: str = "",
-            provenance: dict | None = None) -> dict:
+            provenance: dict | None = None,
+            cross_checks: list | None = None) -> dict:
         rid = run_id or datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_") + uuid.uuid4().hex[:6]
         dets = detection.get("detections", [])
         if task == "all" and all_detections is not None:
@@ -186,6 +188,8 @@ class ReporterAgent:
             report["retry_reason"] = retry_reason
         if provenance is not None:
             report["provenance"] = provenance
+        if cross_checks is not None:
+            report["cross_checks"] = cross_checks
         if run_dir is not None:
             run_dir = Path(run_dir)
             run_dir.mkdir(parents=True, exist_ok=True)
@@ -386,8 +390,10 @@ class Orchestrator:
             url = self._run_file_url(run_id, Path(res["annotated_path"]).name)
             gallery.append({"task": t, "url": url})
             per_task[t] = {"model": res.get("model"), "num_objects": res.get("num_objects", 0),
-                           "inference_ms": res.get("inference_ms"), "annotated_url": url}
+                           "inference_ms": res.get("inference_ms"), "annotated_url": url,
+                           "output_note": res.get("output_note", "")}
             total += res.get("num_objects", 0)
+        cross_checks = cross_check_fused(fused)
 
         primary_url = gallery[0]["url"] if gallery else ""
         pseudo = {"task": "all", "model": "all-7x", "device": fused["detect"].get("device"),
@@ -408,5 +414,5 @@ class Orchestrator:
             fallback_actions=fallback_actions or [], hardware=hw or {},
             run_id=run_id, run_dir=run_dir, run_files=run_files,
             evidence=evidence, grounding=grounding, crop_provenance=crop_provenance,
-            provenance=provenance)
+            provenance=provenance, cross_checks=cross_checks)
         return report
