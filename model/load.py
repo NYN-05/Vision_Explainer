@@ -1,15 +1,29 @@
-"""Download every YOLO26 checkpoint: all sizes x all tasks (5 x 7 = 35 files).
+"""Download YOLO26 X-series checkpoints (1 size x 7 tasks = 7 files).
 
-Run from the directory where you want the weights (e.g. model/):
-    cd model && python load.py
+Run from anywhere (weights always land in this file's folder):
+    python model/load.py
 """
 from pathlib import Path
 import shutil
 
 from ultralytics import YOLO
 
-SIZES = ["n", "s", "m", "l", "x"]
+# HOW TO CHANGE WHAT GETS DOWNLOADED:
+#   - Sizes:  add/remove letters from SIZES. Valid YOLO sizes are
+#             "n" (nano), "s" (small), "m" (medium), "l" (large), "x" (x-large).
+#             Example: SIZES = ["n", "s"] downloads only nano + small.
+#             NOTE: this app runs X-only (see config.yaml), so other sizes are
+#             just local inventory unless you change the app config too.
+#   - Tasks:  add/remove suffixes from TASKS. "" = detection, "-seg" = instance
+#             segmentation, "-pose" = pose, "-obb" = oriented boxes,
+#             "-cls" = classification, "-sem" = semantic segmentation,
+#             "-depth" = depth. Example: TASKS = [""] downloads detection only.
+#   - YOLO generation: file names follow yolo<VERSION><size><task>.pt.
+#             This script uses VERSION = "26". For another generation
+#             (e.g. YOLOv8/v11), change PREFIX below, e.g. PREFIX = "yolov8".
+SIZES = ["x"]
 TASKS = ["", "-seg", "-pose", "-obb", "-cls", "-sem", "-depth"]
+PREFIX = "yolo26"
 
 TARGET = Path(__file__).resolve().parent  # .../obj_detection/model
 
@@ -26,7 +40,7 @@ def download(name: str) -> str:
 
 
 def main() -> None:
-    names = [f"yolo26{s}{t}.pt" for s in SIZES for t in TASKS]
+    names = [f"{PREFIX}{s}{t}.pt" for s in SIZES for t in TASKS]
     print(f"Downloading {len(names)} checkpoints sequentially (sizes={SIZES}, tasks={len(TASKS)}) ...")
     ok, failed = 0, []
     for i, n in enumerate(names, 1):
