@@ -9,8 +9,9 @@ from pathlib import Path
 
 from backend.services import MODEL_REGISTRY, hw_info, select_model
 from backend.utils import (SYSTEM_PROMPT, SYSTEM_PROMPT_ALL, atomic_write_text,
-                           build_fused_summary, build_user_text, build_yolo_summary,
-                           crop_detections, save_report, append_history)
+                           build_evidence, build_fused_summary, build_user_text,
+                           build_yolo_summary, crop_detections, save_report,
+                           append_history, validate_answer)
 
 
 # ---- detector (Agent 1: thin wrapper over YoloService) ----
@@ -55,10 +56,11 @@ class ReasonerAgent:
         self.low_conf_threshold = low_conf_threshold
 
     def run(self, image_path: str | Path, query: str, detection: dict, refine_note: str = "",
-            crops: list[dict] | None = None) -> tuple[dict, dict]:
+            crops: list[dict] | None = None,
+            evidence: list[dict] | None = None) -> tuple[dict, dict]:
         t0 = time.perf_counter()
         summary = build_yolo_summary(detection["detections"], detection["model"], detection["task"])
-        user_text = build_user_text(query, summary, refine_note, crops)
+        user_text = build_user_text(query, summary, refine_note, crops, evidence)
         out = self.gemma.chat_vision(image_path, user_text, SYSTEM_PROMPT,
                                      extra_images=[c["path"] for c in (crops or [])])
         ms = (time.perf_counter() - t0) * 1000.0
@@ -68,11 +70,12 @@ class ReasonerAgent:
         return out, step
 
     def run_fused(self, image_path: str | Path, query: str, fused: dict[str, dict],
-                  crops: list[dict] | None = None) -> tuple[dict, dict]:
+                  crops: list[dict] | None = None,
+                  evidence: list[dict] | None = None) -> tuple[dict, dict]:
         """Single Gemma pass over all 7 heads (no per-head refine — too costly)."""
         t0 = time.perf_counter()
         summary = build_fused_summary(fused)
-        user_text = build_user_text(query, summary, crops=crops)
+        user_text = build_user_text(query, summary, crops=crops, evidence=evidence)
         out = self.gemma.chat_vision(image_path, user_text, SYSTEM_PROMPT_ALL,
                                      extra_images=[c["path"] for c in (crops or [])])
         ms = (time.perf_counter() - t0) * 1000.0
@@ -126,7 +129,11 @@ class ReporterAgent:
             hardware: dict | None = None,
             run_id: str | None = None,
             run_dir: str | Path | None = None,
-            run_files: list | None = None) -> dict:
+            run_files: list | None = None,
+            evidence: list | None = None,
+            grounding: dict | None = None,
+            crop_provenance: list | None = None,
+            retry_reason: str = "") -> dict:
         rid = run_id or datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_") + uuid.uuid4().hex[:6]
         dets = detection.get("detections", [])
         if task == "all" and all_detections is not None:
@@ -168,6 +175,14 @@ class ReporterAgent:
             report["annotated_gallery"] = annotated_gallery
         if per_task is not None:
             report["per_task"] = per_task
+        if evidence is not None:
+            report["evidence"] = evidence
+        if grounding is not None:
+            report["grounding"] = grounding
+        if crop_provenance is not None:
+            report["crop_provenance"] = crop_provenance
+        if retry_reason:
+            report["retry_reason"] = retry_reason
         if run_dir is not None:
             run_dir = Path(run_dir)
             run_dir.mkdir(parents=True, exist_ok=True)
@@ -260,32 +275,53 @@ class Orchestrator:
 
         crops, crop_files = self._close_ups(image_path, detection.get("detections", []),
                                             run_dir, run_id, steps)
-        reason, s2 = self.reasoner.run(image_path, query, detection, crops=crops)
+        evidence = build_evidence(detection.get("detections", []), task)
+        reason, s2 = self.reasoner.run(image_path, query, detection, crops=crops,
+                                       evidence=evidence)
         steps.append(s2)
 
+        def _avg_conf(dets: list[dict]) -> float | None:
+            confs = [d.get("conf", 0.0) for d in (dets or [])
+                     if isinstance(d.get("conf"), (int, float))]
+            return sum(confs) / len(confs) if confs else None
+
         refined = False
-        # Bounded verification: at most VERIFY_BUDGET extra passes, only when the
-        # detector signal AND Gemma corroborate (empty alone is a valid result).
+        retry_reason = ""
+        # Bounded verification: at most VERIFY_BUDGET extra passes. Triggered by
+        # MEASURABLE detector signals; Gemma uncertainty wording corroborates but
+        # very-low confidence alone (< retry_conf) is sufficient — an empty result
+        # alone is still a valid outcome, never a trigger by itself.
         used = 0
         ans = (reason.get("answer", "") or "").lower()
         need, note = self.reasoner.needs_refine(detection, query)
+        avg_conf = _avg_conf(detection.get("detections", []))
+        gemma_uncertain = ("no object" in ans or "uncertain" in ans or "nothing" in ans)
+        measurement_driven = need and avg_conf is not None and avg_conf < self.retry_conf
         if need and used < min(self.max_refine_passes, VERIFY_BUDGET) and (
-                "no object" in ans or "uncertain" in ans or "nothing" in ans):
+                gemma_uncertain or measurement_driven):
+            retry_reason = (f"measurement-driven: avg_conf={avg_conf:.2f} < retry_conf={self.retry_conf}"
+                            if measurement_driven
+                            else f"gemma-corroborated: {note}")
             steps.append({"agent": "orchestrator", "action": "verify-retry",
-                          "detail": f"retry conf={self.retry_conf}: {note}", "ms": 0})
-            fallback_actions.append(f"verify-retry yolo26x-{task} conf={self.retry_conf}: {note}")
+                          "detail": f"retry conf={self.retry_conf}: {retry_reason}", "ms": 0})
+            fallback_actions.append(f"verify-retry yolo26x-{task} conf={self.retry_conf}: {retry_reason}")
             detection, s3 = self.detector.run(image_path, task, conf=self.retry_conf,
                                               iou=iou, annotated_dir=run_dir,
                                               ann_name=f"annotated_{task}_retry.jpg")
             steps.append(s3)
             crops, crop_files = self._close_ups(image_path, detection.get("detections", []),
                                                 run_dir, run_id, steps)
+            evidence = build_evidence(detection.get("detections", []), task)
             reason, s4 = self.reasoner.run(image_path, query, detection,
                                            refine_note=f"Verify pass conf={self.retry_conf}. {note}",
-                                           crops=crops)
+                                           crops=crops, evidence=evidence)
             steps.append(s4)
             refined = True
             used += 1
+
+        grounding = validate_answer(reason.get("answer", ""), [e["id"] for e in evidence])
+        crop_provenance = [{k: c[k] for k in ("n", "det_no", "label", "conf", "box", "pad", "image_size")
+                            if k in c} for c in crops]
 
         annotated_name = Path(detection["annotated_path"]).name
         annotated_url = self._run_file_url(run_id, annotated_name)
@@ -308,7 +344,10 @@ class Orchestrator:
                                    selection_rationale=rationale,
                                    validation_status=MODEL_REGISTRY[task]["validation"],
                                    fallback_actions=fallback_actions, hardware=hw,
-                                   run_id=run_id, run_dir=run_dir, run_files=run_files)
+                                   run_id=run_id, run_dir=run_dir, run_files=run_files,
+                                   evidence=evidence, grounding=grounding,
+                                   crop_provenance=crop_provenance,
+                                   retry_reason=retry_reason)
         return report
 
     def _run_all(self, image_path: Path, query: str, model_choice: str,
@@ -323,8 +362,13 @@ class Orchestrator:
 
         crops, crop_files = self._close_ups(
             image_path, fused.get("detect", {}).get("detections", []), run_dir, run_id, steps)
-        reason, rs = self.reasoner.run_fused(image_path, query, fused, crops=crops)
+        evidence = build_evidence(fused.get("detect", {}).get("detections", []), "detect")
+        reason, rs = self.reasoner.run_fused(image_path, query, fused, crops=crops,
+                                             evidence=evidence)
         steps.append(rs)
+        grounding = validate_answer(reason.get("answer", ""), [e["id"] for e in evidence])
+        crop_provenance = [{k: c[k] for k in ("n", "det_no", "label", "conf", "box", "pad", "image_size")
+                            if k in c} for c in crops]
 
         per_task: dict[str, dict] = {}
         gallery: list[str] = []
@@ -353,5 +397,6 @@ class Orchestrator:
             selection_rationale=rationale or "explicit all-mode: all 7 X heads fused",
             validation_status={t: MODEL_REGISTRY[t]["validation"] for t in fused},
             fallback_actions=fallback_actions or [], hardware=hw or {},
-            run_id=run_id, run_dir=run_dir, run_files=run_files)
+            run_id=run_id, run_dir=run_dir, run_files=run_files,
+            evidence=evidence, grounding=grounding, crop_provenance=crop_provenance)
         return report

@@ -55,6 +55,10 @@ SYSTEM_PROMPT_ALL = (
     "pose keypoints vs detect persons. Do not hallucinate objects no head found. "
     "Explain per-head counts, agreements/disagreements, spatial relations, and what to do next. "
     "Describe the scene richly: setting, colors, lighting, per-object appearance and positions. "
+    "GROUNDING RULES (mandatory): every claim about a localized object must cite its evidence id "
+    "as [#dN]. Per-head confidences are NOT comparable across heads — never rank heads by raw "
+    "confidence. Mark disagreements between heads explicitly instead of silently picking one. "
+    "If evidence is insufficient, say UNCERTAIN or abstain rather than guessing. "
     "Keep the final answer factual and detailed."
 )
 
@@ -69,10 +73,52 @@ def build_fused_summary(fused: dict[str, dict]) -> str:
     return "\n\n".join(parts)
 
 
+def build_evidence(detections: list[dict], task: str) -> list[dict]:
+    """Normalize detections into citable evidence records.
+
+    Each record gets a stable id (`d1..dN`, 1-based in detection order) that
+    Gemma must cite as `[#dN]` for every object claim. Returns
+    [{id, n, task, label, conf, box}] where box is [x1,y1,x2,y2] or None for
+    box-less outputs (e.g. cls). Pure function — safe to unit-test.
+    """
+    out = []
+    for i, d in enumerate(detections or [], 1):
+        if not isinstance(d, dict):
+            continue
+        box = None
+        try:
+            if all(k in d for k in ("x1", "y1", "x2", "y2")):
+                box = [round(float(d["x1"])), round(float(d["y1"])),
+                       round(float(d["x2"])), round(float(d["y2"]))]
+        except (TypeError, ValueError):
+            box = None
+        conf = d.get("conf")
+        out.append({"id": f"d{i}", "n": i, "task": task,
+                    "label": str(d.get("label", "?")),
+                    "conf": float(conf) if isinstance(conf, (int, float)) else None,
+                    "box": box})
+    return out
+
+
+def build_evidence_text(evidence: list[dict]) -> str:
+    """Render evidence records as the citation source Gemma must reference."""
+    if not evidence:
+        return "EVIDENCE: no detections. There is nothing to cite; say so explicitly."
+    lines = [f"EVIDENCE ({len(evidence)} detections — cite these ids):"]
+    for e in evidence:
+        box = f" box={e['box']}" if e["box"] else " (no box)"
+        conf = f"{e['conf']:.2f}" if isinstance(e["conf"], float) else "?"
+        lines.append(f"[#{e['id']}] {e['label']} conf={conf}{box}")
+    return "\n".join(lines)
+
+
 def build_user_text(query: str, yolo_summary: str, refine_note: str = "",
-                    crops: list[dict] | None = None) -> str:
+                    crops: list[dict] | None = None,
+                    evidence: list[dict] | None = None) -> str:
     q = query.strip() or "Describe this image in full detail using the YOLO detections."
     text = f"USER QUERY:\n{q}\n\nYOLO26X OUTPUT:\n{yolo_summary}\n"
+    if evidence is not None:
+        text += f"\n{build_evidence_text(evidence)}\n"
     if crops:
         mapping = "\n".join(
             f"crop_{c['n']} = detection #{c['det_no']} ({c['label']}, conf={c['conf']:.2f})"
@@ -86,17 +132,50 @@ def build_user_text(query: str, yolo_summary: str, refine_note: str = "",
         "layout, uncertainties).\n"
         "ANSWER: detailed description following SCENE / OBJECTS / RELATIONS / TEXT / CLOSE. "
         "Every object gets at least one sentence on appearance and position.\n"
+        "GROUNDING RULES (mandatory): every claim about an object must cite its evidence id "
+        "as [#dN] (e.g. [#d2]). Never cite an id that is not listed above. "
+        "Do not infer relationships (e.g. person DRIVING a vehicle) without visible evidence — "
+        "describe positions, mark the relationship UNCERTAIN. "
+        "If evidence is insufficient, say UNCERTAIN or abstain explicitly rather than guessing.\n"
         "If nothing detected, say so explicitly."
     )
     return text
+
+
+ABSTAIN_PHRASES = ("uncertain", "cannot tell", "can't tell", "unclear", "abstain",
+                   "insufficient evidence", "not visible", "cannot confirm")
+
+import re as _re
+_CITE_RE = _re.compile(r"\[#(d\d+)\]")
+
+
+def validate_answer(answer: str, evidence_ids: list[str]) -> dict:
+    """Check Gemma's answer against the evidence ids it was given.
+
+    Returns {cited, unknown, coverage, abstained}. Heuristic, never raises:
+    it records whether claims are traceable, it does not prove truth.
+    """
+    try:
+        cited = sorted(set(_CITE_RE.findall(answer or "")), key=lambda s: int(s[1:]))
+    except Exception:
+        cited = []
+    valid = set(evidence_ids or [])
+    unknown = [c for c in cited if c not in valid]
+    coverage = round(len([c for c in cited if c in valid]) / len(valid), 3) if valid else 1.0
+    low = (answer or "").lower()
+    abstained = any(p in low for p in ABSTAIN_PHRASES)
+    return {"cited": cited, "unknown": unknown, "coverage": coverage,
+            "abstained": abstained,
+            "evidence_count": len(valid)}
 
 
 def crop_detections(image_path: str | Path, detections: list[dict], out_dir: str | Path,
                     top_k: int = 5, min_conf: float = 0.35, pad: float = 0.12) -> list[dict]:
     """Crop top-k confident boxes (with padding) for Gemma close-ups.
 
-    Returns [{n, path, det_no, label, conf}]. Skips box-less entries (e.g. cls).
-    Never raises: returns [] when nothing qualifies.
+    Returns [{n, path, det_no, label, conf, box, pad}]. box is the padded
+    [x1,y1,x2,y2] pixel coords in the ORIGINAL image (crop provenance).
+    Skips box-less entries (e.g. cls). Never raises: returns [] when nothing qualifies.
     """
     try:
         from PIL import Image
@@ -119,7 +198,9 @@ def crop_detections(image_path: str | Path, detections: list[dict], out_dir: str
                 im.crop(box).save(out_dir / name, "JPEG", quality=88)
                 crops.append({"n": n, "path": str(out_dir / name),
                               "det_no": detections.index(d) + 1,
-                              "label": str(d.get("label", "?")), "conf": float(d["conf"])})
+                              "label": str(d.get("label", "?")), "conf": float(d["conf"]),
+                              "box": list(box), "pad": pad,
+                              "image_size": [w, h]})
         return crops
     except Exception:
         return []
